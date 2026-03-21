@@ -1,0 +1,109 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # Qdrant — vector database for agent memory (P5)
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    ports:
+      - "6333:6333"   # REST + WebUI
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/6334"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # Cognition Engine — LLM completions, token counting, structured output
+  # ---------------------------------------------------------------------------
+  cognition-engine:
+    build:
+      context: cognition-engine
+      dockerfile: Dockerfile
+    env_file:
+      - ./cognition-engine/.env
+    ports:
+      - "50051:50051"
+    environment:
+      CE_GRPC_HOST: 0.0.0.0
+      CE_GRPC_PORT: "50051"
+      CE_LOG_FORMAT: json
+      CE_LOG_LEVEL: INFO
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import grpc; ch = grpc.insecure_channel('localhost:50051'); grpc.channel_ready_future(ch).result(timeout=4)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Orchestrator — session management, agent loop, tool execution
+  # ---------------------------------------------------------------------------
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    env_file:
+      - ./orchestrator/.env
+    ports:
+      - "8080:8080"   # HTTP / WebSocket API
+      - "8081:8081"   # gRPC health service (grpc.health.v1)
+    environment:
+      ORCH__COGNITION_ENGINE__ADDRESS: http://cognition-engine:50051
+      ORCH__QDRANT__URL: http://qdrant:6334
+      ORCH__HTTP__HOST: 0.0.0.0
+      ORCH__HTTP__PORT: "8080"
+      ORCH__HTTP__GRPC_HEALTH_PORT: "8081"
+      ORCH__TELEMETRY__LOG_FORMAT: json
+      ORCH__TELEMETRY__LOG_LEVEL: info
+      # Optional — set in .env or shell environment:
+      # ORCH__AUTH__TOKEN: your-secret-token
+      # ORCH__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      cognition-engine:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Communication Adapters — Telegram and Slack bridge to the Orchestrator
+  # ---------------------------------------------------------------------------
+  communication-adapters:
+    build:
+      context: communication_adapters
+      dockerfile: Dockerfile
+    env_file:
+      - ./communication_adapters/.env
+    ports:
+      - "3000:3000"   # Health endpoint
+      - "8443:8443"   # Telegram webhook (when TELEGRAM_WEBHOOK_URL is set)
+      - "3001:3001"   # Slack HTTP mode (when SLACK_APP_TOKEN is not set)
+    environment:
+      # Docker-internal service address — overrides whatever .env says
+      ORCHESTRATOR_URL: ws://orchestrator:8080/ws
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  qdrant_data:

@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package cognition;
+
+option py_generic_services = false;
+
+// ---------------------------------------------------------------------------
+// Shared types
+// ---------------------------------------------------------------------------
+
+// Carried on every request so the Orchestrator can pass session identity
+// and (future) per-request access control without relying on gRPC metadata.
+message RequestContext {
+  // Opaque session identifier assigned by the Orchestrator.
+  string session_id = 1;
+
+  // Reserved for future per-request auth use.
+  // The Orchestrator's own service-level credentials are handled
+  // at the transport layer (mTLS or similar).
+  string auth_token = 2;
+}
+
+// OpenAI-style chat message.
+message Message {
+  string role    = 1;   // "system" | "user" | "assistant"
+  string content = 2;
+}
+
+// ---------------------------------------------------------------------------
+// CognitionService
+// ---------------------------------------------------------------------------
+
+service CognitionService {
+  // Non-streaming completion: send messages, receive a single response.
+  rpc Complete       (CompleteRequest)      returns (CompleteResponse);
+
+  // Server-streaming completion: receive text chunks as they arrive.
+  rpc StreamComplete (CompleteRequest)      returns (stream StreamChunk);
+
+  // Count tokens in a message list for the given model.
+  rpc CountTokens    (CountTokensRequest)   returns (CountTokensResponse);
+
+  // Extract and repair JSON from a raw LLM response string.
+  rpc ParseOutput    (ParseOutputRequest)   returns (ParseOutputResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Complete / StreamComplete
+// ---------------------------------------------------------------------------
+
+message CompleteRequest {
+  RequestContext context     = 1;
+  repeated Message messages  = 2;
+
+  // Optional model override (empty = use server default).
+  string model               = 3;
+
+  // Sampling temperature in [0.0, 2.0]. 0 → default server value.
+  float temperature          = 4;
+
+  // Max completion tokens. 0 → use server default.
+  int32 max_tokens           = 5;
+}
+
+message CompleteResponse {
+  string content       = 1;
+  string model_used    = 2;
+  int32  input_tokens  = 3;
+  int32  output_tokens = 4;
+  string finish_reason = 5;
+}
+
+// A single chunk in a StreamComplete response.
+message StreamChunk {
+  string content = 1;  // Incremental text delta.
+  bool   done    = 2;  // True on the final (empty) sentinel chunk.
+}
+
+// ---------------------------------------------------------------------------
+// CountTokens
+// ---------------------------------------------------------------------------
+
+message CountTokensRequest {
+  RequestContext   context  = 1;
+  repeated Message messages = 2;
+
+  // Model to count for (empty = server primary model).
+  string model              = 3;
+}
+
+message CountTokensResponse {
+  int32 token_count      = 1;
+  bool  fits_budget      = 2;  // True if count ≤ prompt_token_budget.
+  int32 remaining_tokens = 3;  // Budget − count (0 if over budget).
+}
+
+// ---------------------------------------------------------------------------
+// ParseOutput
+// ---------------------------------------------------------------------------
+
+message ParseOutputRequest {
+  RequestContext   context          = 1;
+
+  // The raw LLM response text to parse.
+  string raw_response               = 2;
+
+  // Optional JSON Schema (as a JSON string) for structural validation.
+  // If empty, only JSON well-formedness is checked.
+  string schema_json                = 3;
+
+  // The original prompt messages, used if a re-prompt correction is needed.
+  repeated Message context_messages = 4;
+}
+
+message ParseOutputResponse {
+  // The extracted (and repaired, if necessary) JSON as a compact string.
+  string parsed_json = 1;
+
+  // True if heuristic repairs were applied.
+  bool repaired      = 2;
+
+  // True if the LLM was re-prompted to fix its output.
+  bool re_prompted   = 3;
+}

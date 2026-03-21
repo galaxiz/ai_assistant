@@ -1,0 +1,40 @@
+# Build artefacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Development & test
+tests/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+*.xml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets / local config
+.env
+*.env.*
+!.env.example
+
+# macOS
+.DS_Store
+
+# Scripts (not needed in image)
+scripts/

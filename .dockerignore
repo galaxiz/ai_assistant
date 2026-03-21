@@ -1,0 +1,27 @@
+# Rust build artifacts
+orchestrator/target/
+
+# Python artifacts
+cognition-engine/__pycache__/
+cognition-engine/**/__pycache__/
+cognition-engine/.venv/
+cognition-engine/**/*.pyc
+cognition-engine/.pytest_cache/
+cognition-engine/**/.pytest_cache/
+
+# Environment / secrets
+**/.env
+**/.env.*
+
+# Git
+.git/
+.gitignore
+
+# Editor
+.idea/
+.vscode/
+**/.DS_Store
+**/*.swp
+
+# Wasm test artifacts
+**/*.wasm
