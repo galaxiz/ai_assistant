@@ -2,6 +2,8 @@
 
 Harden the existing in-process Wasm sandbox in `orchestrator/src/tool_registry/` and build a reference tool. No crate extraction.
 
+> Native CLI tool execution is scoped separately in [`tool_execution_native.md`](tool_execution_native.md).
+
 ---
 
 ## Proposed Changes

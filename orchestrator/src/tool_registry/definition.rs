@@ -34,6 +34,15 @@ use serde_json::Value;
 
 use crate::errors::ToolError;
 
+/// Which executor backend runs this tool.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolBackend {
+    #[default]
+    Wasm,
+    Native,
+}
+
 /// Permissions a tool may be granted.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ToolPermissions {
@@ -61,6 +70,9 @@ pub struct ArgDef {
     #[serde(default)]
     pub description: String,
     pub default: Option<serde_json::Value>,
+    /// If true, this arg is passed as a positional argument (no `--` prefix).
+    #[serde(default)]
+    pub positional: bool,
 }
 
 /// Parsed and validated tool definition.
@@ -69,8 +81,17 @@ pub struct ToolDefinition {
     pub name: String,
     pub version: String,
     pub description: String,
-    /// Path to the `.wasm` binary (relative to the tool.md file).
-    pub wasm: PathBuf,
+    /// Executor backend. Defaults to `wasm` for backwards compatibility.
+    #[serde(default)]
+    pub backend: ToolBackend,
+    /// Path to the `.wasm` binary (relative to the tool.md file). Required when `backend = "wasm"`.
+    pub wasm: Option<PathBuf>,
+    /// OS binary name. Required when `backend = "native"`.
+    /// Must appear in the global allow-list (`ToolSettings::allowed_binaries`).
+    pub binary: Option<String>,
+    /// Fixed arguments prepended before the dynamic args (e.g. `["diff"]` for `git diff`).
+    #[serde(default)]
+    pub command_args: Vec<String>,
     /// Execution timeout in seconds.
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
@@ -172,10 +193,32 @@ pub async fn parse_tool_md(path: &Path) -> Result<ToolDefinition, ToolError> {
         source: e.into(),
     })?;
 
+    // Validate backend/wasm/binary consistency.
+    match def.backend {
+        ToolBackend::Wasm => {
+            if def.wasm.is_none() {
+                return Err(ToolError::ParseError {
+                    file: path.display().to_string(),
+                    source: anyhow::anyhow!("`wasm` field is required when backend = \"wasm\""),
+                });
+            }
+        }
+        ToolBackend::Native => {
+            if def.binary.is_none() {
+                return Err(ToolError::ParseError {
+                    file: path.display().to_string(),
+                    source: anyhow::anyhow!("`binary` field is required when backend = \"native\""),
+                });
+            }
+        }
+    }
+
     // Make the `wasm` path absolute relative to the tool.md directory.
-    if def.wasm.is_relative() {
-        let base = path.parent().unwrap_or(Path::new("."));
-        def.wasm = base.join(&def.wasm);
+    if let Some(wasm) = &def.wasm {
+        if wasm.is_relative() {
+            let base = path.parent().unwrap_or(Path::new("."));
+            def.wasm = Some(base.join(wasm));
+        }
     }
 
     def.docs = docs.to_string();
@@ -225,7 +268,10 @@ Echoes whatever you send it.
 
         let def: ToolDefinition = toml::from_str(fm).unwrap();
         assert_eq!(def.name, "echo");
+        assert_eq!(def.backend, ToolBackend::Wasm);
+        assert!(def.wasm.is_some());
         assert_eq!(def.args.len(), 1);
         assert_eq!(def.args[0].name, "text");
+        assert!(!def.args[0].positional);
     }
 }

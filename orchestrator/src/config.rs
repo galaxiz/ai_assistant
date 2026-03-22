@@ -63,6 +63,12 @@ pub struct ToolSettings {
     /// Host directory exposed to Wasm tools as their filesystem root.
     /// Individual tools may override this with `[permissions] sandbox_root`.
     pub sandbox_root: std::path::PathBuf,
+    /// Binaries that native tools are allowed to invoke.
+    /// If empty, all native tools are rejected (fail-closed).
+    /// Override: `ORCH__TOOLS__ALLOWED_BINARIES="git,curl,jq"`
+    pub allowed_binaries: Vec<String>,
+    /// Maximum bytes captured from native tool stdout+stderr combined.
+    pub max_output_bytes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,6 +131,8 @@ impl Settings {
             .set_default("tools.default_timeout_secs", 10)?
             .set_default("tools.max_memory_pages", 256)?
             .set_default("tools.sandbox_root", ".")?
+            .set_default("tools.allowed_binaries", Vec::<String>::new())?
+            .set_default("tools.max_output_bytes", 65536)?
             .set_default("agent.max_tool_iterations", 10)?
             .set_default("agent.session_idle_timeout_secs", 1800)?
             .set_default("agent.max_context_tokens", 8000)?

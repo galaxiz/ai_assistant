@@ -7,11 +7,12 @@
 
 pub mod definition;
 pub mod executor;
+pub mod native_executor;
 #[cfg(test)]
 mod tests;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -21,7 +22,7 @@ use tracing::{info, warn};
 use wasmtime::Engine;
 
 use crate::errors::ToolError;
-pub use definition::ToolDefinition;
+pub use definition::{ToolBackend, ToolDefinition};
 
 /// In-memory entry combining the definition and the (lazily compiled) Module.
 struct ToolEntry {
@@ -36,11 +37,21 @@ pub struct ToolRegistry {
     max_memory_pages: u64,
     /// Global sandbox root used when a tool definition does not specify its own.
     sandbox_root: PathBuf,
+    /// Binaries that native tools are allowed to invoke (fail-closed when empty).
+    allowed_binaries: HashSet<String>,
+    /// Maximum bytes captured from native tool stdout+stderr combined.
+    max_output_bytes: usize,
 }
 
 impl ToolRegistry {
     /// Scan `dir` for `*.md` files, parse frontmatter, build registry.
-    pub async fn load(dir: &Path, max_memory_pages: u64, sandbox_root: PathBuf) -> Result<Self, ToolError> {
+    pub async fn load(
+        dir: &Path,
+        max_memory_pages: u64,
+        sandbox_root: PathBuf,
+        allowed_binaries: HashSet<String>,
+        max_output_bytes: usize,
+    ) -> Result<Self, ToolError> {
         let engine_config = {
             let mut cfg = wasmtime::Config::new();
             // Enable fuel metering for instruction-count enforcement.
@@ -58,6 +69,8 @@ impl ToolRegistry {
                 entries: RwLock::new(entries),
                 max_memory_pages,
                 sandbox_root,
+                allowed_binaries,
+                max_output_bytes,
             });
         }
 
@@ -75,7 +88,7 @@ impl ToolRegistry {
             }
             match definition::parse_tool_md(&path).await {
                 Ok(def) => {
-                    info!(tool = %def.name, wasm = %def.wasm.display(), "Registered tool");
+                    info!(tool = %def.name, backend = ?def.backend, "Registered tool");
                     entries.insert(def.name.clone(), ToolEntry { definition: def, module: None });
                 }
                 Err(e) => {
@@ -89,6 +102,8 @@ impl ToolRegistry {
             entries: RwLock::new(entries),
             max_memory_pages,
             sandbox_root,
+            allowed_binaries,
+            max_output_bytes,
         })
     }
 
@@ -121,33 +136,8 @@ impl ToolRegistry {
                 .ok_or_else(|| ToolError::NotFound(tool_name.to_string()))?
         };
 
-        // Validate and normalise arguments before touching Wasm.
-        let args_json = definition.validate_args(args_json)?.to_string();
-        let args_json = args_json.as_str();
-
-        // Lazy-compile the Wasm module if not yet cached.
-        {
-            let mut entries = self.entries.write().await;
-            let entry = entries
-                .get_mut(tool_name)
-                .ok_or_else(|| ToolError::NotFound(tool_name.to_string()))?;
-
-            if entry.module.is_none() {
-                info!(tool = %tool_name, wasm = %definition.wasm.display(), "Compiling Wasm module (first use)");
-                let wasm_bytes =
-                    tokio::fs::read(&definition.wasm).await.map_err(|e| ToolError::Compile(e.into()))?;
-                let module = wasmtime::Module::new(&self.engine, &wasm_bytes)
-                    .map_err(|e| ToolError::Compile(e.into()))?;
-                entry.module = Some(module);
-                info!(tool = %tool_name, "Wasm module compiled and cached");
-            }
-        }
-
-        // Extract the cached module (clone is cheap — Arc-backed).
-        let module = {
-            let entries = self.entries.read().await;
-            entries[tool_name].module.clone().unwrap()
-        };
+        // Validate and normalise arguments before dispatching.
+        let validated_args = definition.validate_args(args_json)?;
 
         // Resolve sandbox root: per-tool override wins, else global default.
         let sandbox_root = definition.permissions.sandbox_root
@@ -155,14 +145,56 @@ impl ToolRegistry {
             .map(PathBuf::from)
             .unwrap_or_else(|| self.sandbox_root.clone());
 
-        executor::run(
-            &self.engine,
-            &module,
-            &definition,
-            args_json,
-            self.max_memory_pages,
-            sandbox_root,
-        )
-        .await
+        match definition.backend {
+            ToolBackend::Native => {
+                native_executor::run(
+                    &definition,
+                    &validated_args,
+                    &self.allowed_binaries,
+                    &sandbox_root,
+                    self.max_output_bytes,
+                )
+                .await
+            }
+            ToolBackend::Wasm => {
+                let args_json = validated_args.to_string();
+
+                // Lazy-compile the Wasm module if not yet cached.
+                {
+                    let mut entries = self.entries.write().await;
+                    let entry = entries
+                        .get_mut(tool_name)
+                        .ok_or_else(|| ToolError::NotFound(tool_name.to_string()))?;
+
+                    if entry.module.is_none() {
+                        let wasm_path = definition.wasm.as_ref()
+                            .ok_or_else(|| ToolError::Compile(anyhow::anyhow!("tool `{tool_name}` has no wasm path")))?;
+                        info!(tool = %tool_name, wasm = %wasm_path.display(), "Compiling Wasm module (first use)");
+                        let wasm_bytes =
+                            tokio::fs::read(wasm_path).await.map_err(|e| ToolError::Compile(e.into()))?;
+                        let module = wasmtime::Module::new(&self.engine, &wasm_bytes)
+                            .map_err(|e| ToolError::Compile(e.into()))?;
+                        entry.module = Some(module);
+                        info!(tool = %tool_name, "Wasm module compiled and cached");
+                    }
+                }
+
+                // Extract the cached module (clone is cheap — Arc-backed).
+                let module = {
+                    let entries = self.entries.read().await;
+                    entries[tool_name].module.clone().unwrap()
+                };
+
+                executor::run(
+                    &self.engine,
+                    &module,
+                    &definition,
+                    &args_json,
+                    self.max_memory_pages,
+                    sandbox_root,
+                )
+                .await
+            }
+        }
     }
 }

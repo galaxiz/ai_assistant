@@ -9,11 +9,14 @@ mod tests {
 
     use wasmtime::{Config, Engine, Module};
 
+    use std::{collections::HashSet, path::Path};
+
     use crate::{
         errors::ToolError,
         tool_registry::{
-            definition::{ToolDefinition, ToolPermissions},
+            definition::{ToolBackend, ToolDefinition, ToolPermissions},
             executor,
+            native_executor,
         },
     };
 
@@ -43,7 +46,10 @@ mod tests {
             name: name.to_string(),
             version: "0.1.0".into(),
             description: "Test tool".into(),
-            wasm: PathBuf::from("test.wasm"),
+            backend: ToolBackend::Wasm,
+            wasm: Some(PathBuf::from("test.wasm")),
+            binary: None,
+            command_args: vec![],
             timeout_secs: 5,
             permissions: ToolPermissions::default(),
             args: vec![],
@@ -63,7 +69,10 @@ mod tests {
             name: "test".into(),
             version: "0.1.0".into(),
             description: "Test".into(),
-            wasm: PathBuf::from("test.wasm"),
+            backend: ToolBackend::Wasm,
+            wasm: Some(PathBuf::from("test.wasm")),
+            binary: None,
+            command_args: vec![],
             timeout_secs: 5,
             permissions: ToolPermissions::default(),
             args,
@@ -79,6 +88,7 @@ mod tests {
             required: true,
             description: String::new(),
             default: None,
+            positional: false,
         }]);
         let err = def.validate_args("{}").unwrap_err();
         assert!(
@@ -95,6 +105,7 @@ mod tests {
             required: true,
             description: String::new(),
             default: None,
+            positional: false,
         }]);
         // Passing a string where integer is expected.
         let err = def.validate_args(r#"{"count": "hello"}"#).unwrap_err();
@@ -112,6 +123,7 @@ mod tests {
             required: false,
             description: String::new(),
             default: Some(json!(4096)),
+            positional: false,
         }]);
         let result = def.validate_args("{}").unwrap();
         assert_eq!(result["max_bytes"], json!(4096));
@@ -126,6 +138,7 @@ mod tests {
                 required: true,
                 description: String::new(),
                 default: None,
+                positional: false,
             },
             ArgDef {
                 name: "verbose".into(),
@@ -133,6 +146,7 @@ mod tests {
                 required: false,
                 description: String::new(),
                 default: Some(json!(false)),
+                positional: false,
             },
         ]);
         let result = def.validate_args(r#"{"path": "/tmp/foo"}"#).unwrap();
@@ -328,6 +342,104 @@ mod tests {
         assert_eq!(output, "{", "first stdin byte not echoed to stdout");
     }
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // Native executor unit tests
+    // ──────────────────────────────────────────────────────────────────────────
+
+    fn native_def(binary: &str, args: Vec<ArgDef>) -> ToolDefinition {
+        ToolDefinition {
+            name: binary.to_string(),
+            version: "0.1.0".into(),
+            description: "test".into(),
+            backend: ToolBackend::Native,
+            wasm: None,
+            binary: Some(binary.to_string()),
+            command_args: vec![],
+            timeout_secs: 5,
+            permissions: ToolPermissions::default(),
+            args,
+            docs: String::new(),
+        }
+    }
+
+    fn positional_arg(name: &str) -> ArgDef {
+        ArgDef {
+            name: name.into(),
+            ty: "string".into(),
+            required: false,
+            description: String::new(),
+            default: None,
+            positional: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_native_echo() {
+        let def = native_def("echo", vec![positional_arg("text")]);
+        let args = serde_json::json!({"text": "hello"});
+        let allowed = HashSet::from(["echo".to_string()]);
+
+        let result = native_executor::run(&def, &args, &allowed, Path::new("."), 65536)
+            .await
+            .expect("echo should succeed");
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(
+            v["stdout"].as_str().unwrap().contains("hello"),
+            "expected 'hello' in stdout, got: {result}"
+        );
+        assert_eq!(v["exit_code"], serde_json::json!(0));
+    }
+
+    #[tokio::test]
+    async fn test_native_binary_not_in_allowlist() {
+        let def = native_def("echo", vec![]);
+        let empty: HashSet<String> = HashSet::new();
+
+        let err = native_executor::run(&def, &serde_json::json!({}), &empty, Path::new("."), 65536)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ToolError::PermissionDenied(_)),
+            "expected PermissionDenied, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_native_timeout() {
+        let mut def = native_def("sleep", vec![positional_arg("duration")]);
+        def.timeout_secs = 1;
+        let args = serde_json::json!({"duration": "60"});
+        let allowed = HashSet::from(["sleep".to_string()]);
+
+        let err = native_executor::run(&def, &args, &allowed, Path::new("."), 65536)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ToolError::Timeout { secs: 1 }),
+            "expected Timeout after 1s, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_native_output_truncation() {
+        // `seq 1 1000` emits ~3.9 KiB; cap at 50 bytes to force truncation.
+        let def = native_def("seq", vec![positional_arg("first"), positional_arg("last")]);
+        let args = serde_json::json!({"first": "1", "last": "1000"});
+        let allowed = HashSet::from(["seq".to_string()]);
+
+        let result = native_executor::run(&def, &args, &allowed, Path::new("."), 50)
+            .await
+            .expect("seq should succeed");
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let stdout = v["stdout"].as_str().unwrap();
+        assert!(
+            stdout.ends_with("[truncated]"),
+            "expected stdout to end with '[truncated]', got: {stdout:?}"
+        );
+    }
+
     #[tokio::test]
     async fn test_tool_not_found() {
         use std::sync::Arc;
@@ -338,6 +450,8 @@ mod tests {
             &PathBuf::from("/tmp/nonexistent_tools_dir_abc123"),
             256,
             PathBuf::from("."),
+            std::collections::HashSet::new(),
+            65536,
         )
         .await
         .expect("load empty registry");

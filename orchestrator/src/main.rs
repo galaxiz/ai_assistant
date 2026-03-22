@@ -35,7 +35,13 @@ async fn main() -> anyhow::Result<()> {
     let session_store = Arc::new(SessionStore::new());
     let cognition_client = Arc::new(CognitionClient::connect(&settings.cognition_engine).await?);
     let tool_registry = Arc::new(
-        ToolRegistry::load(&settings.tools.tools_dir, settings.tools.max_memory_pages, settings.tools.sandbox_root.clone()).await?,
+        ToolRegistry::load(
+            &settings.tools.tools_dir,
+            settings.tools.max_memory_pages,
+            settings.tools.sandbox_root.clone(),
+            settings.tools.allowed_binaries.iter().cloned().collect(),
+            settings.tools.max_output_bytes,
+        ).await?,
     );
     let health = Arc::new(HealthState::new());
 
