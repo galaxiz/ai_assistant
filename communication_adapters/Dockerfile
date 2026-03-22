@@ -13,6 +13,8 @@ RUN npm run build
 FROM node:22-alpine AS runtime
 WORKDIR /app
 
+RUN apk add --no-cache tzdata
+
 # Install production dependencies only
 COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
