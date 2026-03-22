@@ -23,5 +23,5 @@ cognition-engine/**/.pytest_cache/
 **/.DS_Store
 **/*.swp
 
-# Wasm test artifacts
-**/*.wasm
+# Wasm build artifacts inside Rust target dirs (compiled tools/**.wasm are kept)
+tools/*/target/

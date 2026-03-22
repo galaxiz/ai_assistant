@@ -67,12 +67,14 @@ RUN groupadd -r orchestrator && useradd -r -g orchestrator orchestrator
 WORKDIR /app
 
 COPY --from=builder /build/orchestrator/target/release/orchestrator /usr/local/bin/orchestrator
+COPY tools/ /app/tools/
 
 ENV ORCH__HTTP__HOST=0.0.0.0 \
     ORCH__HTTP__PORT=8080 \
     ORCH__HTTP__GRPC_HEALTH_PORT=8081 \
     ORCH__TELEMETRY__LOG_FORMAT=json \
-    ORCH__TELEMETRY__LOG_LEVEL=info
+    ORCH__TELEMETRY__LOG_LEVEL=info \
+    ORCH__TOOLS__TOOLS_DIR=/app/tools
 
 EXPOSE 8080 8081
 
