@@ -23,6 +23,7 @@ async function main() {
     {
       url: config.ORCHESTRATOR_URL,
       ...(config.ORCH_AUTH_TOKEN !== undefined && { authToken: config.ORCH_AUTH_TOKEN }),
+      requestTimeoutMs: config.ORCHESTRATOR_REQUEST_TIMEOUT_SECS * 1000,
     },
     logger.child({ module: 'orchestrator-client' }),
   );

@@ -5,6 +5,7 @@ import type { Logger } from '../../utils/logger.js';
 import type { SlackSectionBlock } from './formatter.js';
 import { SlackFormatter } from './formatter.js';
 import { withRetry, isNotConnectedError } from '../../utils/retry.js';
+import { OrchestratorError } from '../../core/orchestrator-client.js';
 
 // ── Minimal event/say shapes used by handler logic (facilitates unit testing) ─
 
@@ -90,6 +91,11 @@ export async function handleAppMention(
         maxAttempts: 3,
         delayMs: 1_000,
         retryable: isNotConnectedError,
+        onAttempt: (attempt) => logger.info({ attempt, channel: event.channel, sessionId }, 'sendMessage attempt'),
+        onFailure: (err, attempt, willRetry) => logger.warn(
+          { attempt, willRetry, error: err instanceof Error ? err.message : String(err) },
+          'sendMessage failed',
+        ),
         onRetry: (_, attempt) => logger.warn({ attempt }, 'Orchestrator not connected, retrying'),
       },
     );
@@ -100,7 +106,11 @@ export async function handleAppMention(
     await say({ blocks, text: response.content, thread_ts: threadTs });
   } catch (err) {
     logger.error({ err, channel: event.channel }, 'Failed to process app_mention');
-    await say({ text: 'Sorry, I encountered an error. Please try again.', thread_ts: threadTs });
+    if (err instanceof OrchestratorError && err.session_id !== undefined) {
+      sessionMap.set(key, err.session_id);
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    await say({ text: `Error: ${msg}`, thread_ts: threadTs });
   }
 }
 
@@ -137,6 +147,11 @@ export async function handleDirectMessage(
         maxAttempts: 3,
         delayMs: 1_000,
         retryable: isNotConnectedError,
+        onAttempt: (attempt) => logger.info({ attempt, channel: event.channel, sessionId }, 'sendMessage attempt'),
+        onFailure: (err, attempt, willRetry) => logger.warn(
+          { attempt, willRetry, error: err instanceof Error ? err.message : String(err) },
+          'sendMessage failed',
+        ),
         onRetry: (_, attempt) => logger.warn({ attempt }, 'Orchestrator not connected, retrying'),
       },
     );
@@ -148,7 +163,11 @@ export async function handleDirectMessage(
     await say({ blocks, text: response.content });
   } catch (err) {
     logger.error({ err, channel: event.channel }, 'Failed to process DM');
-    await say({ text: 'Sorry, I encountered an error. Please try again.' });
+    if (err instanceof OrchestratorError && err.session_id !== undefined) {
+      sessionMap.set(key, err.session_id);
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    await say({ text: `Error: ${msg}` });
   }
 }
 

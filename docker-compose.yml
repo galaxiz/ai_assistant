@@ -67,6 +67,10 @@ services:
       # Optional — set in .env or shell environment:
       # ORCH__AUTH__TOKEN: your-secret-token
       # ORCH__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     depends_on:
       cognition-engine:
         condition: service_healthy

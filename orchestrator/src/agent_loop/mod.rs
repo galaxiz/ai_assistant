@@ -20,7 +20,7 @@ use crate::{
     access_control::AccessPolicy,
     cognition_client::{proto::Message, CognitionClient},
     config::AgentSettings,
-    errors::{OrchestratorError, ToolError},
+    errors::OrchestratorError,
     memory::MemoryStore,
     session::{Session, SessionState},
     telemetry,
@@ -58,6 +58,9 @@ pub async fn run_turn(
     memory: Option<&Arc<MemoryStore>>,
 ) -> Result<AgentResponse, OrchestratorError> {
     // --- 1. Append user message ---
+    // Checkpoint history length so we can roll back if the turn fails,
+    // preventing orphaned user messages that corrupt future turns.
+    let history_checkpoint = session.conversation_history.len();
     match request {
         AgentRequest::Message(msg) => {
             session.push_message("user", &msg);
@@ -82,8 +85,10 @@ pub async fn run_turn(
     for iteration in 0..=settings.max_tool_iterations {
         if iteration == settings.max_tool_iterations {
             session.state = SessionState::Error("max_iterations".into());
+            session.conversation_history.truncate(history_checkpoint);
             return Err(OrchestratorError::MaxIterationsExceeded(settings.max_tool_iterations));
         }
+        info!(iteration, history_len = session.conversation_history.len(), "Agent loop iteration start");
 
         // --- 2. Token trimming ---
         loop {
@@ -105,9 +110,17 @@ pub async fn run_turn(
         }
 
         debug!(iteration, "Calling Cognition Engine");
-        let response = cognition
+        let response = match cognition
             .complete(&sid, auth_token, session.conversation_history.clone(), "", 0.0, 0)
-            .await?;
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                session.conversation_history.truncate(history_checkpoint);
+                session.state = SessionState::Error(e.to_string());
+                return Err(e.into());
+            }
+        };
 
         let content = response.content.clone();
         info!(
@@ -137,7 +150,7 @@ pub async fn run_turn(
                     &format!("Access denied: tool '{}' is not permitted for this session.", tool_call.tool),
                 );
                 session.push_message("assistant", &content);
-                session.push_message("tool", &denied_result);
+                session.push_message("user", &denied_result);
                 session.state = SessionState::Processing;
                 continue;
             }
@@ -171,7 +184,7 @@ pub async fn run_turn(
                 &[KeyValue::new("tool", tool_call.tool.clone())],
             );
 
-            session.push_message("tool", &tool_result);
+            session.push_message("user", &tool_result);
             session.state = SessionState::Processing;
         } else {
             // --- 5. Final response ---

@@ -5,6 +5,8 @@ const ConfigSchema = z.object({
   ORCHESTRATOR_URL: z.string().startsWith('ws', { message: 'ORCHESTRATOR_URL must start with ws:// or wss://' }),
   ORCH_AUTH_TOKEN: z.string().optional(),
   SESSION_IDLE_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+  /** How long to wait for the orchestrator to respond before timing out (seconds). */
+  ORCHESTRATOR_REQUEST_TIMEOUT_SECS: z.coerce.number().int().positive().default(3600),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
 
   // Health

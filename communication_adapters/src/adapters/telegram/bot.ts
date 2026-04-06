@@ -5,6 +5,7 @@ import type { SessionMap, SessionKey } from '../../core/session-map.js';
 import type { Logger } from '../../utils/logger.js';
 import { TelegramFormatter } from './formatter.js';
 import { withRetry, isNotConnectedError } from '../../utils/retry.js';
+import { OrchestratorError } from '../../core/orchestrator-client.js';
 
 /** Minimal subset of Context used by handlers — makes unit testing easy. */
 export interface HandlerCtx {
@@ -94,6 +95,11 @@ export async function handleText(
         maxAttempts: 3,
         delayMs: 1_000,
         retryable: isNotConnectedError,
+        onAttempt: (attempt) => logger.info({ attempt, chatId, sessionId }, 'sendMessage attempt'),
+        onFailure: (err, attempt, willRetry) => logger.warn(
+          { attempt, willRetry, error: err instanceof Error ? err.message : String(err) },
+          'sendMessage failed',
+        ),
         onRetry: (_, attempt) => logger.warn({ attempt }, 'Orchestrator not connected, retrying'),
       },
     );
@@ -112,8 +118,12 @@ export async function handleText(
     }
   } catch (err) {
     logger.error({ err, chatId }, 'Failed to process Telegram message');
+    if (err instanceof OrchestratorError && err.session_id !== undefined) {
+      sessionMap.set(key, err.session_id);
+    }
+    const msg = err instanceof Error ? err.message : String(err);
     await ctx
-      .reply('Sorry, I encountered an error\\. Please try again\\.', { parse_mode: 'MarkdownV2' })
+      .reply(`Error: ${msg}`)
       .catch(() => undefined);
   }
 }

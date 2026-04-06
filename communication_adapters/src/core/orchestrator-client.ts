@@ -3,6 +3,19 @@ import type { Logger } from '../utils/logger.js';
 import type { AgentResponse, OrchestratorMessage, UserMessage } from './types.js';
 import { isErrorResponse } from './types.js';
 
+/** Error thrown by sendMessage when the Orchestrator returns an error response. */
+export class OrchestratorError extends Error {
+  /** The session that was active when the error occurred (if any). */
+  readonly session_id: string | undefined;
+  readonly code: string;
+  constructor(message: string, code: string, session_id?: string) {
+    super(message);
+    this.name = 'OrchestratorError';
+    this.code = code;
+    this.session_id = session_id;
+  }
+}
+
 export interface OrchestratorClientOptions {
   url: string;
   authToken?: string;
@@ -169,7 +182,12 @@ export class OrchestratorClient {
     const msg = parsed as Record<string, unknown>;
 
     if (isErrorResponse(msg as unknown as OrchestratorMessage)) {
-      const err = new Error(`Orchestrator error [${msg['code']}]: ${msg['error']}`);
+      const errMsg = msg as unknown as { code: string; error: string; session_id?: string };
+      const err = new OrchestratorError(
+        `Orchestrator error [${errMsg.code}]: ${errMsg.error}`,
+        errMsg.code,
+        errMsg.session_id,
+      );
       // Reject the single in-flight request if unambiguous.
       if (this.pending.size === 1) {
         const [[key, req]] = [...this.pending.entries()] as [[string, PendingRequest]];

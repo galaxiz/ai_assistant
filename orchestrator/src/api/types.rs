@@ -27,10 +27,19 @@ pub struct AgentResponse {
 pub struct ErrorResponse {
     pub error: String,
     pub code: String,
+    /// Included when a session was created before the error occurred,
+    /// so the client can resume the same session on retry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 impl ErrorResponse {
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self { error: message.into(), code: code.into() }
+        Self { error: message.into(), code: code.into(), session_id: None }
+    }
+
+    pub fn with_session(mut self, session_id: impl Into<String>) -> Self {
+        self.session_id = Some(session_id.into());
+        self
     }
 }

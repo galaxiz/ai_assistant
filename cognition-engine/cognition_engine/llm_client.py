@@ -147,6 +147,7 @@ class LLMClient:
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             finish_reason=result.finish_reason,
+            output=result.content,
         )
         return result
 
@@ -220,18 +221,43 @@ class LLMClient:
 
         for attempt_model in models_to_try:
             try:
-                log.debug("Calling LLM", model=attempt_model, stream=stream)
+                log.info(
+                    "Calling LLM",
+                    model=attempt_model,
+                    stream=stream,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    message_count=len(messages),
+                    messages=messages,
+                )
                 response = await litellm.acompletion(
                     model=attempt_model,
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     stream=stream,
-                    num_retries=self._settings.llm_max_retries,
+                    # LiteLLM treats 0 as falsy and falls back to its built-in
+                    # default (2 retries). Only pass num_retries when > 0 so
+                    # that CE_LLM_MAX_RETRIES=0 truly means "no retries".
+                    # Previously: num_retries=self._settings.llm_max_retries,
+                    **({"num_retries": self._settings.llm_max_retries} if self._settings.llm_max_retries > 0 else {}),
                     timeout=self._settings.llm_timeout_seconds,
                     **({"api_key": self._settings.google_api_key} if self._settings.google_api_key else {}),
                     **kwargs,
                 )
+                # Some preview/experimental models return an empty completion
+                # (0 tokens, finish_reason="stop") instead of a real error.
+                # Treat this as a failure so the fallback model can be tried.
+                if not stream:
+                    content = getattr(
+                        getattr(response.choices[0], "message", None), "content", None
+                    )
+                    if not content:
+                        raise errors.LLMError(
+                            f"Model returned empty completion"
+                            f" (finish_reason={response.choices[0].finish_reason!r})",
+                            model=attempt_model,
+                        )
                 return response
 
             except Exception as exc:  # noqa: BLE001

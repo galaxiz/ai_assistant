@@ -60,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     tzdata \
+    at \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r orchestrator && useradd -r -g orchestrator orchestrator
@@ -67,20 +68,23 @@ RUN groupadd -r orchestrator && useradd -r -g orchestrator orchestrator
 WORKDIR /app
 
 COPY --from=builder /build/orchestrator/target/release/orchestrator /usr/local/bin/orchestrator
-COPY tools/ /app/tools/
+COPY orchestrator/tools/*.md /app/tools/
+COPY orchestrator/tools/*.wasm /app/tools/
+COPY orchestrator/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 ENV ORCH__HTTP__HOST=0.0.0.0 \
     ORCH__HTTP__PORT=8080 \
     ORCH__HTTP__GRPC_HEALTH_PORT=8081 \
     ORCH__TELEMETRY__LOG_FORMAT=json \
     ORCH__TELEMETRY__LOG_LEVEL=info \
-    ORCH__TOOLS__TOOLS_DIR=/app/tools
+    ORCH__TOOLS__TOOLS_DIR=/app/tools \
+    ORCH__TOOLS__ALLOWED_BINARIES=ls,cat,head,tail,grep,find,wc,sort,uniq,diff,stat,du,date,echo,which,sed,awk,cut,tr,curl,crontab,atq,at
 
 EXPOSE 8080 8081
-
-USER orchestrator
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/orchestrator"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/local/bin/orchestrator"]

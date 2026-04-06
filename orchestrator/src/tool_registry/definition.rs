@@ -73,6 +73,10 @@ pub struct ArgDef {
     /// If true, this arg is passed as a positional argument (no `--` prefix).
     #[serde(default)]
     pub positional: bool,
+    /// If true, this arg's value is piped to the process's stdin instead of
+    /// being added to argv. Only one arg per tool may have `is_stdin = true`.
+    #[serde(default)]
+    pub is_stdin: bool,
 }
 
 /// Parsed and validated tool definition.

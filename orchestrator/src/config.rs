@@ -5,7 +5,49 @@
 
 
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialise a `Vec<String>` from either a TOML/JSON sequence **or** a
+/// comma-separated string (the form Docker / shell env vars provide).
+///
+/// Examples that both succeed:
+///   - `ORCH__TOOLS__ALLOWED_BINARIES=git,curl,jq`  → `["git", "curl", "jq"]`
+///   - `allowed_binaries = ["git", "curl"]`          → `["git", "curl"]`
+fn deserialize_comma_separated_vec<'de, D>(de: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{SeqAccess, Visitor};
+    use std::fmt;
+
+    struct CommaSepOrSeq;
+
+    impl<'de> Visitor<'de> for CommaSepOrSeq {
+        type Value = Vec<String>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a sequence or a comma-separated string")
+        }
+
+        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Vec<String>, E> {
+            Ok(v.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect())
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
+            let mut out = Vec::new();
+            while let Some(s) = seq.next_element()? {
+                out.push(s);
+            }
+            Ok(out)
+        }
+    }
+
+    de.deserialize_any(CommaSepOrSeq)
+}
 
 /// Top-level settings object.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +108,7 @@ pub struct ToolSettings {
     /// Binaries that native tools are allowed to invoke.
     /// If empty, all native tools are rejected (fail-closed).
     /// Override: `ORCH__TOOLS__ALLOWED_BINARIES="git,curl,jq"`
+    #[serde(default, deserialize_with = "deserialize_comma_separated_vec")]
     pub allowed_binaries: Vec<String>,
     /// Maximum bytes captured from native tool stdout+stderr combined.
     pub max_output_bytes: usize,
@@ -103,9 +146,11 @@ pub struct AuthSettings {
     pub token: Option<String>,
     /// Allowed tool names for authenticated callers.
     /// Empty list means all tools are permitted.
+    #[serde(default, deserialize_with = "deserialize_comma_separated_vec")]
     pub allowed_tools: Vec<String>,
     /// Allowed model identifiers for authenticated callers.
     /// Empty list means all models are permitted.
+    #[serde(default, deserialize_with = "deserialize_comma_separated_vec")]
     pub allowed_models: Vec<String>,
 }
 

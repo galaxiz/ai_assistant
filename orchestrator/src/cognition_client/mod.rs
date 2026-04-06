@@ -189,6 +189,7 @@ impl CognitionClient {
     {
         let max = self.settings.max_retries;
         let mut attempt = 0u32;
+        tracing::debug!(max_retries = max, "with_retry enter");
         loop {
             match f(self.inner.clone()).await {
                 Ok(v) => return Ok(v),
@@ -197,13 +198,23 @@ impl CognitionClient {
                     let backoff = Duration::from_millis(200 * 2u64.pow(attempt - 1));
                     warn!(
                         attempt,
+                        max_retries = max,
                         code = ?status.code(),
                         backoff_ms = backoff.as_millis(),
                         "Cognition Engine RPC retrying"
                     );
                     tokio::time::sleep(backoff).await;
                 }
-                Err(status) => return Err(status.into()),
+                Err(status) => {
+                    warn!(
+                        attempt,
+                        max_retries = max,
+                        code = ?status.code(),
+                        retryable = is_retryable(status.code()),
+                        "with_retry giving up"
+                    );
+                    return Err(status.into());
+                }
             }
         }
     }

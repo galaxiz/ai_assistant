@@ -60,11 +60,20 @@ pub async fn ws_handler(
 async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
     let (mut sender, mut receiver) = socket.split();
 
-    while let Some(msg) = receiver.next().await {
-        let raw = match msg {
-            Ok(WsMessage::Text(t)) => t,
-            Ok(WsMessage::Close(_)) | Err(_) => break,
-            _ => continue,
+    loop {
+        // Wait for the next text message, responding to pings in the meantime so
+        // the client's heartbeat does not time out between requests.
+        let raw = loop {
+            match receiver.next().await {
+                Some(Ok(WsMessage::Text(t))) => break t,
+                Some(Ok(WsMessage::Ping(data))) => {
+                    if sender.send(WsMessage::Pong(data)).await.is_err() {
+                        return;
+                    }
+                }
+                Some(Ok(WsMessage::Close(_))) | None | Some(Err(_)) => return,
+                Some(Ok(_)) => {}
+            }
         };
 
         // Parse the inbound message.
@@ -73,7 +82,9 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
             Err(e) => {
                 let err = serde_json::to_string(&ErrorResponse::new("parse_error", e.to_string()))
                     .unwrap_or_default();
-                let _ = sender.send(WsMessage::Text(err.into())).await;
+                if sender.send(WsMessage::Text(err.into())).await.is_err() {
+                    return;
+                }
                 continue;
             }
         };
@@ -95,7 +106,9 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
                 "Too many requests — please slow down.",
             ))
             .unwrap_or_default();
-            let _ = sender.send(WsMessage::Text(err.into())).await;
+            if sender.send(WsMessage::Text(err.into())).await.is_err() {
+                return;
+            }
             continue;
         }
 
@@ -103,12 +116,14 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
 
         let arc = match state.sessions.get(&session_id).await {
             Some(a) => a,
-            None => break,
+            None => return,
         };
 
-        let response = {
+        // Run the agent turn. While it is in progress, keep draining the receive
+        // buffer so pings are answered and the client heartbeat stays alive.
+        let turn_result = {
             let mut session = arc.lock().await;
-            match agent_loop::run_turn(
+            let mut turn_fut = std::pin::pin!(agent_loop::run_turn(
                 &mut session,
                 agent_loop::AgentRequest::Message(user_msg.message.clone()),
                 &state.cognition,
@@ -117,22 +132,40 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
                 &user.token,
                 &user.policy,
                 state.memory.as_ref(),
-            )
-            .await
-            {
-                Ok(agent_loop::AgentResponse::Message(content)) => {
-                    serde_json::to_string(&AgentResponse {
-                        session_id: session_id.clone(),
-                        content,
-                        model_used: String::new(),
-                        input_tokens: 0,
-                        output_tokens: 0,
-                    })
-                    .unwrap_or_default()
+            ));
+
+            loop {
+                tokio::select! {
+                    result = &mut turn_fut => break result,
+                    msg = receiver.next() => match msg {
+                        Some(Ok(WsMessage::Ping(data))) => {
+                            if sender.send(WsMessage::Pong(data)).await.is_err() {
+                                return;
+                            }
+                        }
+                        Some(Ok(WsMessage::Close(_))) | None | Some(Err(_)) => return,
+                        _ => {}
+                    },
                 }
-                Err(e) => serde_json::to_string(&ErrorResponse::new("agent_error", e.to_string()))
-                    .unwrap_or_default(),
             }
+        };
+
+        let response = match turn_result {
+            Ok(agent_loop::AgentResponse::Message(content)) => {
+                serde_json::to_string(&AgentResponse {
+                    session_id: session_id.clone(),
+                    content,
+                    model_used: String::new(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                })
+                .unwrap_or_default()
+            }
+            Err(e) => serde_json::to_string(
+                &ErrorResponse::new("agent_error", e.to_string())
+                    .with_session(session_id.clone()),
+            )
+            .unwrap_or_default(),
         };
 
         m.request_duration_ms.record(
@@ -141,7 +174,7 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
         );
 
         if sender.send(WsMessage::Text(response.into())).await.is_err() {
-            break;
+            return;
         }
     }
 }

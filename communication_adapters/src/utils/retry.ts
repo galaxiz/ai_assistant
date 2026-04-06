@@ -9,19 +9,26 @@ export async function withRetry<T>(
     delayMs: number;
     retryable?: (err: unknown) => boolean;
     onRetry?: (err: unknown, attempt: number) => void;
+    onAttempt?: (attempt: number) => void;
+    onFailure?: (err: unknown, attempt: number, willRetry: boolean) => void;
   },
 ): Promise<T> {
-  const { maxAttempts, delayMs, retryable = () => true, onRetry } = opts;
+  const { maxAttempts, delayMs, retryable = () => true, onRetry, onAttempt, onFailure } = opts;
   let lastErr: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    onAttempt?.(attempt);
     try {
       return await fn();
     } catch (err) {
       lastErr = err;
-      if (attempt < maxAttempts && retryable(err)) {
+      const willRetry = attempt < maxAttempts && retryable(err);
+      onFailure?.(err, attempt, willRetry);
+      if (willRetry) {
         onRetry?.(err, attempt);
         await new Promise<void>((r) => setTimeout(r, delayMs));
+      } else {
+        break;
       }
     }
   }
@@ -29,7 +36,11 @@ export async function withRetry<T>(
   throw lastErr;
 }
 
-/** Returns true for errors thrown when the orchestrator client is reconnecting. */
+/** Returns true for transient connection errors that are worth retrying. */
 export function isNotConnectedError(err: unknown): boolean {
-  return err instanceof Error && err.message.includes('not connected');
+  if (!(err instanceof Error)) return false;
+  return (
+    err.message.includes('not connected') ||
+    err.message.includes('WebSocket closed unexpectedly')
+  );
 }

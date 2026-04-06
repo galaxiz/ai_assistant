@@ -1,15 +1,17 @@
 //! Native (OS binary) tool executor.
 //!
 //! Runs an allow-listed OS binary as a subprocess with:
-//!   - Environment scrubbing (only PATH, HOME, LANG, TERM are inherited)
+//!   - Environment scrubbing (only PATH, HOME, LANG, TERM, TZ are inherited)
 //!   - Working directory pinned to `sandbox_root`
 //!   - Per-tool timeout via `tokio::time::timeout`
 //!   - Output truncation at `max_output_bytes`
 //!   - No shell — `Command::new(binary)` directly, preventing injection
+//!   - Optional stdin piping for tools that mark an arg with `is_stdin = true`
 
 use std::{
     collections::HashSet,
     path::Path,
+    process::Stdio,
     time::Duration,
 };
 
@@ -27,9 +29,11 @@ const TRUNCATION_SUFFIX: &str = "\n[truncated]";
 /// - `binary` must appear in `allowed_binaries`; otherwise `ToolError::PermissionDenied`.
 /// - Execution is wrapped in `tokio::time::timeout(definition.timeout_secs)`.
 /// - The subprocess's working directory is set to `sandbox_root`.
-/// - Environment is cleared; only `PATH`, `HOME`, `LANG`, and `TERM` are re-injected.
+/// - Environment is cleared; only `PATH`, `HOME`, `LANG`, `TERM`, and `TZ` are re-injected.
 /// - Combined stdout+stderr is capped at `max_output_bytes`; excess is replaced with
 ///   `"\n[truncated]"`.
+/// - If any arg in the definition has `is_stdin = true`, its value is piped to the
+///   process's stdin instead of being added to argv.
 ///
 /// # Output
 /// Returns a JSON string: `{"stdout":"…","stderr":"…","exit_code":0}`.
@@ -53,13 +57,21 @@ pub async fn run(
     }
 
     let argv = build_argv(definition, args);
+
+    // Extract the stdin arg value, if any arg is marked `is_stdin = true`.
+    let stdin_content = definition.args.iter()
+        .find(|a| a.is_stdin)
+        .and_then(|a| args.get(&a.name))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     let sandbox_root = sandbox_root.to_path_buf();
     let binary = binary.to_string();
     let timeout_secs = definition.timeout_secs;
 
     let result = tokio::time::timeout(
         Duration::from_secs(timeout_secs),
-        spawn(binary, argv, sandbox_root, max_output_bytes),
+        spawn(binary, argv, stdin_content, sandbox_root, max_output_bytes),
     )
     .await
     .map_err(|_| ToolError::Timeout { secs: timeout_secs })??;
@@ -71,6 +83,7 @@ pub async fn run(
 async fn spawn(
     binary: String,
     argv: Vec<String>,
+    stdin_content: Option<String>,
     sandbox_root: std::path::PathBuf,
     max_output_bytes: usize,
 ) -> Result<String, ToolError> {
@@ -79,8 +92,9 @@ async fn spawn(
     let home  = std::env::var("HOME").unwrap_or_default();
     let lang  = std::env::var("LANG").unwrap_or_default();
     let term  = std::env::var("TERM").unwrap_or_default();
+    let tz    = std::env::var("TZ").unwrap_or_default();
 
-    let output = tokio::process::Command::new(&binary)
+    let mut child = tokio::process::Command::new(&binary)
         .args(&argv)
         .current_dir(&sandbox_root)
         .env_clear()
@@ -88,9 +102,27 @@ async fn spawn(
         .env("HOME", &home)
         .env("LANG", &lang)
         .env("TERM", &term)
-        .output()
-        .await
+        .env("TZ", &tz)
+        .stdin(if stdin_content.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| ToolError::Execution(anyhow::anyhow!("failed to spawn `{binary}`: {e}")))?;
+
+    // Write stdin content and close the pipe so the process sees EOF.
+    if let Some(content) = stdin_content {
+        let mut stdin = child.stdin.take().expect("stdin was piped");
+        tokio::io::AsyncWriteExt::write_all(&mut stdin, content.as_bytes())
+            .await
+            .map_err(|e| ToolError::Execution(anyhow::anyhow!("failed to write stdin: {e}")))?;
+        // Drop closes the pipe, signalling EOF to the child.
+        drop(stdin);
+    }
+
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| ToolError::Execution(anyhow::anyhow!("failed to wait for `{binary}`: {e}")))?;
 
     let stdout = truncate(output.stdout, max_output_bytes);
     let stderr = truncate(output.stderr, max_output_bytes.saturating_sub(stdout.len()));
@@ -134,7 +166,7 @@ pub fn build_argv(definition: &ToolDefinition, args: &Value) -> Vec<String> {
 
     // Pass 1 — positional args in definition order.
     for arg_def in &definition.args {
-        if !arg_def.positional {
+        if !arg_def.positional || arg_def.is_stdin {
             continue;
         }
         if let Some(val) = obj.get(&arg_def.name) {
@@ -146,7 +178,7 @@ pub fn build_argv(definition: &ToolDefinition, args: &Value) -> Vec<String> {
 
     // Pass 2 — named flags (--name=value or --name for booleans).
     for arg_def in &definition.args {
-        if arg_def.positional {
+        if arg_def.positional || arg_def.is_stdin {
             continue;
         }
         match obj.get(&arg_def.name) {
@@ -201,6 +233,7 @@ mod tests {
             description: String::new(),
             default: None,
             positional,
+            is_stdin: false,
         }
     }
 

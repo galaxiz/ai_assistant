@@ -20,10 +20,12 @@ export interface AgentResponse {
 export interface ErrorResponse {
   error: string;
   code: string;
+  /** Present when the error occurred after a session was already created. */
+  session_id?: string;
 }
 
 export type OrchestratorMessage = AgentResponse | ErrorResponse;
 
 export function isErrorResponse(m: OrchestratorMessage): m is ErrorResponse {
-  return 'code' in m && 'error' in m && !('session_id' in m);
+  return 'code' in m && 'error' in m && !('content' in m);
 }
