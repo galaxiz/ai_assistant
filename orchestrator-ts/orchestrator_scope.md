@@ -79,18 +79,19 @@ The Orchestrator is the **core daemon** of the AI Agent system. This is the **Ty
 > **Estimated effort**: Large
 > **Dependencies**: P1, P2
 
-- [ ] Define `AgentRequest` and `AgentResponse` types for internal message routing
-- [ ] Implement the main agent loop (`runTurn`):
-  1. Receive user message (via inbound handler from adapter layer — P6)
-  2. Look up or create session
-  3. Count tokens → trim history if needed
-  4. Call `Complete` / `StreamComplete` on Cognition Engine
-  5. Parse response → detect if tool invocation is requested
-  6. If tool call → dispatch to Tool Sandbox (P4) → feed result back → loop
-  7. Return final response to adapter
-- [ ] Implement routing table / dispatcher pattern for extensibility
-- [ ] Handle error paths: Cognition Engine unavailable, parse failures, tool errors
-- [ ] Add configurable max-loop-iterations guard (prevent infinite tool loops)
+- [x] Define `AgentRequest` and `AgentResponse` types (`src/agent/types.ts`); also `ToolCall`, `ToolResult`, `ToolExecutor` interface (P4 implements), `MaxIterationsError`
+- [x] Implement the main agent loop `runTurn()` (`src/agent/loop.ts`):
+  1. Resolve or create session (creates new if sessionId absent or unknown)
+  2. Append user message; acquire per-session exclusive lock via `withSession`
+  3. Count tokens via CE; trim oldest non-system messages if over budget
+  4. Call `Complete` on Cognition Engine
+  5. Parse response for `` ```tool_call ``` `` blocks (`src/agent/protocol.ts`)
+  6. If tool calls → execute all in parallel; catch errors per-call (error status, no throw); inject `` ```tool_result ``` `` blocks as next user message → loop
+  7. Return `AgentResponse` when completion contains no tool calls
+- [x] `AgentRouter` class (`src/agent/router.ts`) — dispatcher pattern wrapping `runTurn`; designed to be extended in P6 for WS/webhook adapters
+- [x] Error paths handled: CE errors set session to `error` state and re-throw; tool errors captured as `status: 'error'` result and fed back to LLM
+- [x] `MaxIterationsError` thrown and session set to `error` when loop hits `ORCH_AGENT_MAX_TOOL_ITERATIONS` (default 10)
+- [x] 30 tests (13 protocol + 17 loop) covering happy path, tool calls, trimming, error paths, and max-iterations guard
 
 ---
 
