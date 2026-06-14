@@ -120,6 +120,10 @@ impl SessionStore {
         self.sessions.read().await.len()
     }
 
+    pub async fn is_empty(&self) -> bool {
+        self.sessions.read().await.is_empty()
+    }
+
     /// List all active session IDs.
     pub async fn list_active(&self) -> Vec<String> {
         let map = self.sessions.read().await;

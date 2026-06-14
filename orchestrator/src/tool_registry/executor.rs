@@ -91,7 +91,7 @@ fn execute_sync(
                 wasmtime_wasi::DirPerms::READ,
                 wasmtime_wasi::FilePerms::READ,
             )
-            .map_err(|e| ToolError::Execution(e.into()))?;
+            .map_err(ToolError::Execution)?;
     } else if definition.permissions.fs_write {
         // Full read+write access to the configured sandbox directory.
         builder
@@ -101,7 +101,7 @@ fn execute_sync(
                 wasmtime_wasi::DirPerms::all(),
                 wasmtime_wasi::FilePerms::all(),
             )
-            .map_err(|e| ToolError::Execution(e.into()))?;
+            .map_err(ToolError::Execution)?;
     }
     // network permission: WASI preview1 does not expose sockets by default;
     // leaving it unenforced here (the ABI simply won't resolve socket calls).
@@ -121,24 +121,19 @@ fn execute_sync(
         },
     );
     // Fuel: 1 unit ≈ 1 Wasm instruction. 500M allows ~seconds of CPU work.
-    store2
-        .set_fuel(500_000_000)
-        .map_err(|e| ToolError::Execution(e.into()))?;
+    store2.set_fuel(500_000_000).map_err(ToolError::Execution)?;
     store2.limiter(|data| &mut data.limits);
 
     let mut linker: Linker<LimitedData> = Linker::new(engine);
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |d| &mut d.wasi)
-        .map_err(|e| ToolError::Execution(e.into()))?;
+        .map_err(ToolError::Execution)?;
 
     let instance = linker
         .instantiate(&mut store2, module)
-        .map_err(|e| ToolError::Execution(e.into()))?;
+        .map_err(ToolError::Execution)?;
 
     // Invoke the `run` export if it exists, otherwise fall back to `_start` (WASI command).
-    if let Some(run_fn) = instance
-        .get_typed_func::<(i32, i32), i32>(&mut store2, "run")
-        .ok()
-    {
+    if let Ok(run_fn) = instance.get_typed_func::<(i32, i32), i32>(&mut store2, "run") {
         // Write args into Wasm memory.
         let memory = instance.get_memory(&mut store2, "memory").ok_or_else(|| {
             ToolError::Execution(anyhow::anyhow!("Wasm module has no `memory` export"))
@@ -148,13 +143,11 @@ fn execute_sync(
         let args_len = args_bytes.len() as i32;
 
         // Allocate in Wasm memory via `alloc` export if available, else use offset 0 (simple modules).
-        let args_ptr = if let Some(alloc) = instance
-            .get_typed_func::<i32, i32>(&mut store2, "alloc")
-            .ok()
+        let args_ptr = if let Ok(alloc) = instance.get_typed_func::<i32, i32>(&mut store2, "alloc")
         {
             alloc
                 .call(&mut store2, args_len)
-                .map_err(|e| ToolError::Execution(e.into()))?
+                .map_err(ToolError::Execution)?
         } else {
             0i32
         };
@@ -165,7 +158,7 @@ fn execute_sync(
 
         let result_ptr = run_fn
             .call(&mut store2, (args_ptr, args_len))
-            .map_err(|e| ToolError::Execution(e.into()))?;
+            .map_err(ToolError::Execution)?;
 
         // Read result: first 4 bytes are length (little-endian u32), then UTF-8.
         let mut len_bytes = [0u8; 4];
@@ -183,10 +176,7 @@ fn execute_sync(
     } else {
         // WASI command — run `_start` and capture whatever it wrote to stdout.
         // This supports standard CLI-style tools compiled to WASI.
-        if let Some(start) = instance
-            .get_typed_func::<(), ()>(&mut store2, "_start")
-            .ok()
-        {
+        if let Ok(start) = instance.get_typed_func::<(), ()>(&mut store2, "_start") {
             // proc_exit(0) manifests as an anyhow Trap; treat exit-code-0 as a clean exit.
             if let Err(e) = start.call(&mut store2, ()) {
                 let is_clean_exit = e.chain().any(|cause| {
@@ -194,7 +184,7 @@ fn execute_sync(
                     msg.contains("exit status 0") || msg.contains("i32 exit status 0")
                 });
                 if !is_clean_exit {
-                    return Err(ToolError::Execution(e.into()));
+                    return Err(ToolError::Execution(e));
                 }
             }
         }

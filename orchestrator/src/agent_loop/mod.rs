@@ -46,6 +46,7 @@ pub enum AgentResponse {
 /// `auth_token` is forwarded in every `RequestContext` sent to the Cognition Engine.
 /// `policy` enforces which tools and models this caller may use.
 /// `memory` — if provided, the full conversation is persisted to Qdrant after the turn.
+#[allow(clippy::too_many_arguments)]
 #[instrument(skip(session, cognition, tools, settings, policy, memory), fields(session_id = %session.session_id))]
 pub async fn run_turn(
     session: &mut Session,

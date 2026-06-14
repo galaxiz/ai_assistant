@@ -58,7 +58,7 @@ impl ToolRegistry {
             cfg.consume_fuel(true);
             cfg
         };
-        let engine = Engine::new(&engine_config).map_err(|e| ToolError::Compile(e.into()))?;
+        let engine = Engine::new(&engine_config).map_err(ToolError::Compile)?;
         let mut entries = HashMap::new();
 
         if !dir.exists() {
@@ -184,7 +184,7 @@ impl ToolRegistry {
                             .await
                             .map_err(|e| ToolError::Compile(e.into()))?;
                         let module = wasmtime::Module::new(&self.engine, &wasm_bytes)
-                            .map_err(|e| ToolError::Compile(e.into()))?;
+                            .map_err(ToolError::Compile)?;
                         entry.module = Some(module);
                         info!(tool = %tool_name, "Wasm module compiled and cached");
                     }

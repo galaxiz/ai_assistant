@@ -47,7 +47,7 @@ impl CognitionClient {
     /// Connect to the Cognition Engine.
     pub async fn connect(settings: &CognitionEngineSettings) -> Result<Self, CognitionError> {
         let endpoint = tonic::transport::Endpoint::from_shared(settings.address.clone())
-            .map_err(|e| CognitionError::Connection(e.into()))?
+            .map_err(CognitionError::Connection)?
             .connect_timeout(Duration::from_secs(settings.connect_timeout_secs))
             .timeout(Duration::from_secs(settings.request_timeout_secs));
 

@@ -4,6 +4,7 @@
 //! using wasmtime's built-in `wat` feature, so no external toolchain needed.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use std::path::PathBuf;
 
@@ -88,6 +89,7 @@ mod tests {
             description: String::new(),
             default: None,
             positional: false,
+            is_stdin: false,
         }]);
         let err = def.validate_args("{}").unwrap_err();
         assert!(
@@ -105,6 +107,7 @@ mod tests {
             description: String::new(),
             default: None,
             positional: false,
+            is_stdin: false,
         }]);
         // Passing a string where integer is expected.
         let err = def.validate_args(r#"{"count": "hello"}"#).unwrap_err();
@@ -123,6 +126,7 @@ mod tests {
             description: String::new(),
             default: Some(json!(4096)),
             positional: false,
+            is_stdin: false,
         }]);
         let result = def.validate_args("{}").unwrap();
         assert_eq!(result["max_bytes"], json!(4096));
@@ -138,6 +142,7 @@ mod tests {
                 description: String::new(),
                 default: None,
                 positional: false,
+                is_stdin: false,
             },
             ArgDef {
                 name: "verbose".into(),
@@ -146,6 +151,7 @@ mod tests {
                 description: String::new(),
                 default: Some(json!(false)),
                 positional: false,
+                is_stdin: false,
             },
         ]);
         let result = def.validate_args(r#"{"path": "/tmp/foo"}"#).unwrap();
@@ -369,6 +375,7 @@ mod tests {
             description: String::new(),
             default: None,
             positional: true,
+            is_stdin: false,
         }
     }
 

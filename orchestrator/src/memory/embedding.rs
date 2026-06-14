@@ -16,7 +16,7 @@ pub fn init() -> Result<(), MemoryError> {
         TextEmbedding::try_new(
             InitOptions::new(EmbeddingModel::BGESmallENV15).with_show_download_progress(true),
         )
-        .map_err(|e| MemoryError::Embedding(e.into()))
+        .map_err(MemoryError::Embedding)
     })?;
     Ok(())
 }
@@ -30,7 +30,7 @@ pub fn embed(text: &str) -> Result<Vec<f32>, MemoryError> {
     })?;
     let mut result = engine
         .embed(vec![text], None)
-        .map_err(|e| MemoryError::Embedding(e.into()))?;
+        .map_err(MemoryError::Embedding)?;
     Ok(result.remove(0))
 }
 
@@ -41,5 +41,5 @@ pub fn embed_batch(texts: &[&str]) -> Result<Vec<Vec<f32>>, MemoryError> {
     })?;
     engine
         .embed(texts.to_vec(), None)
-        .map_err(|e| MemoryError::Embedding(e.into()))
+        .map_err(MemoryError::Embedding)
 }

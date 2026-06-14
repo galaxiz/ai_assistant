@@ -80,7 +80,7 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
             Err(e) => {
                 let err = serde_json::to_string(&ErrorResponse::new("parse_error", e.to_string()))
                     .unwrap_or_default();
-                if sender.send(WsMessage::Text(err.into())).await.is_err() {
+                if sender.send(WsMessage::Text(err)).await.is_err() {
                     return;
                 }
                 continue;
@@ -104,7 +104,7 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
                 "Too many requests — please slow down.",
             ))
             .unwrap_or_default();
-            if sender.send(WsMessage::Text(err.into())).await.is_err() {
+            if sender.send(WsMessage::Text(err)).await.is_err() {
                 return;
             }
             continue;
@@ -170,7 +170,7 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
             &[KeyValue::new("endpoint", "ws")],
         );
 
-        if sender.send(WsMessage::Text(response.into())).await.is_err() {
+        if sender.send(WsMessage::Text(response)).await.is_err() {
             return;
         }
     }

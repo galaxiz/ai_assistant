@@ -255,6 +255,7 @@ mod tests {
                 description: String::new(),
                 default: None,
                 positional: false,
+                is_stdin: false,
             },
             ArgDef {
                 name: "quiet".into(),
@@ -263,6 +264,7 @@ mod tests {
                 description: String::new(),
                 default: None,
                 positional: false,
+                is_stdin: false,
             },
         ]);
         let args = serde_json::json!({"verbose": true, "quiet": false});
