@@ -46,6 +46,7 @@ pub enum AgentResponse {
 /// `auth_token` is forwarded in every `RequestContext` sent to the Cognition Engine.
 /// `policy` enforces which tools and models this caller may use.
 /// `memory` — if provided, the full conversation is persisted to Qdrant after the turn.
+#[allow(clippy::too_many_arguments)]
 #[instrument(skip(session, cognition, tools, settings, policy, memory), fields(session_id = %session.session_id))]
 pub async fn run_turn(
     session: &mut Session,
@@ -76,7 +77,10 @@ pub async fn run_turn(
         // Prepend system message (insert before the user message).
         session.conversation_history.insert(
             0,
-            Message { role: "system".into(), content: system_prompt },
+            Message {
+                role: "system".into(),
+                content: system_prompt,
+            },
         );
     }
 
@@ -86,14 +90,25 @@ pub async fn run_turn(
         if iteration == settings.max_tool_iterations {
             session.state = SessionState::Error("max_iterations".into());
             session.conversation_history.truncate(history_checkpoint);
-            return Err(OrchestratorError::MaxIterationsExceeded(settings.max_tool_iterations));
+            return Err(OrchestratorError::MaxIterationsExceeded(
+                settings.max_tool_iterations,
+            ));
         }
-        info!(iteration, history_len = session.conversation_history.len(), "Agent loop iteration start");
+        info!(
+            iteration,
+            history_len = session.conversation_history.len(),
+            "Agent loop iteration start"
+        );
 
         // --- 2. Token trimming ---
         loop {
             let count_res = cognition
-                .count_tokens(&sid, auth_token, session.conversation_history.clone(), "placeholder-model")
+                .count_tokens(
+                    &sid,
+                    auth_token,
+                    session.conversation_history.clone(),
+                    "placeholder-model",
+                )
                 .await?;
 
             if count_res.token_count <= settings.max_context_tokens as i32 {
@@ -111,7 +126,14 @@ pub async fn run_turn(
 
         debug!(iteration, "Calling Cognition Engine");
         let response = match cognition
-            .complete(&sid, auth_token, session.conversation_history.clone(), "", 0.0, 0)
+            .complete(
+                &sid,
+                auth_token,
+                session.conversation_history.clone(),
+                "",
+                0.0,
+                0,
+            )
             .await
         {
             Ok(r) => r,
@@ -140,14 +162,20 @@ pub async fn run_turn(
             // Enforce access policy — deny if tool not permitted.
             if !policy.allows_tool(&tool_call.tool) {
                 warn!(tool = %tool_call.tool, "Tool denied by access policy");
-                m.tool_calls_total.add(1, &[
-                    KeyValue::new("tool", tool_call.tool.clone()),
-                    KeyValue::new("status", "denied"),
-                ]);
+                m.tool_calls_total.add(
+                    1,
+                    &[
+                        KeyValue::new("tool", tool_call.tool.clone()),
+                        KeyValue::new("status", "denied"),
+                    ],
+                );
                 let denied_result = format_tool_result(
                     &tool_call.call_id,
                     "error",
-                    &format!("Access denied: tool '{}' is not permitted for this session.", tool_call.tool),
+                    &format!(
+                        "Access denied: tool '{}' is not permitted for this session.",
+                        tool_call.tool
+                    ),
                 );
                 session.push_message("assistant", &content);
                 session.push_message("user", &denied_result);
@@ -164,18 +192,24 @@ pub async fn run_turn(
             let tool_result = match tools.execute(&tool_call.tool, &tool_call.args_json()).await {
                 Ok(output) => {
                     info!(tool = %tool_call.tool, "Tool executed successfully");
-                    m.tool_calls_total.add(1, &[
-                        KeyValue::new("tool", tool_call.tool.clone()),
-                        KeyValue::new("status", "ok"),
-                    ]);
+                    m.tool_calls_total.add(
+                        1,
+                        &[
+                            KeyValue::new("tool", tool_call.tool.clone()),
+                            KeyValue::new("status", "ok"),
+                        ],
+                    );
                     format_tool_result(&tool_call.call_id, "ok", &output)
                 }
                 Err(e) => {
                     warn!(tool = %tool_call.tool, error = %e, "Tool execution failed");
-                    m.tool_calls_total.add(1, &[
-                        KeyValue::new("tool", tool_call.tool.clone()),
-                        KeyValue::new("status", "error"),
-                    ]);
+                    m.tool_calls_total.add(
+                        1,
+                        &[
+                            KeyValue::new("tool", tool_call.tool.clone()),
+                            KeyValue::new("status", "error"),
+                        ],
+                    );
                     format_tool_result(&tool_call.call_id, "error", &e.to_string())
                 }
             };
@@ -231,7 +265,10 @@ async fn build_system_prompt(tools: &Arc<ToolRegistry>, policy: &AccessPolicy) -
     } else {
         prompt.push_str("## Available Tools\n\n");
         for tool in &visible {
-            prompt.push_str(&format!("### `{}`\n{}\n\n**Arguments:**\n", tool.name, tool.description));
+            prompt.push_str(&format!(
+                "### `{}`\n{}\n\n**Arguments:**\n",
+                tool.name, tool.description
+            ));
             for arg in &tool.args {
                 let req = if arg.required { "required" } else { "optional" };
                 prompt.push_str(&format!(

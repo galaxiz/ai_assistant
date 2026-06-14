@@ -9,6 +9,12 @@ use axum::{
 };
 use tower_http::trace::TraceLayer;
 
+use super::{
+    middleware::{auth_middleware, AuthConfig},
+    rate_limit::SessionRateLimiter,
+    webhook::{webhook_handler, WebhookState},
+    ws::{ws_handler, WsState},
+};
 use crate::{
     cognition_client::CognitionClient,
     config::Settings,
@@ -16,12 +22,6 @@ use crate::{
     memory::MemoryStore,
     session::SessionStore,
     tool_registry::ToolRegistry,
-};
-use super::{
-    middleware::{auth_middleware, AuthConfig},
-    rate_limit::SessionRateLimiter,
-    webhook::{webhook_handler, WebhookState},
-    ws::{ws_handler, WsState},
 };
 
 /// Build the application router.
@@ -63,6 +63,9 @@ pub fn build_router(
 
     Router::new()
         .merge(protected)
-        .route("/health", get(health_handler).with_state(Arc::clone(&health)))
+        .route(
+            "/health",
+            get(health_handler).with_state(Arc::clone(&health)),
+        )
         .layer(TraceLayer::new_for_http())
 }

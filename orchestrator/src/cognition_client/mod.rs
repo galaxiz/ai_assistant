@@ -12,10 +12,8 @@ pub mod proto {
 use std::time::Duration;
 
 use proto::{
-    cognition_service_client::CognitionServiceClient,
-    CompleteRequest, CompleteResponse,
-    CountTokensRequest, CountTokensResponse,
-    Message, ParseOutputRequest, ParseOutputResponse,
+    cognition_service_client::CognitionServiceClient, CompleteRequest, CompleteResponse,
+    CountTokensRequest, CountTokensResponse, Message, ParseOutputRequest, ParseOutputResponse,
     RequestContext, StreamChunk,
 };
 use tokio_stream::Stream;
@@ -24,10 +22,7 @@ use tonic_health::pb::health_client::HealthClient;
 use tonic_health::pb::HealthCheckRequest;
 use tracing::{instrument, warn};
 
-use crate::{
-    config::CognitionEngineSettings,
-    errors::CognitionError,
-};
+use crate::{config::CognitionEngineSettings, errors::CognitionError};
 
 /// Transient gRPC codes that are safe to retry.
 fn is_retryable(code: tonic::Code) -> bool {
@@ -52,7 +47,7 @@ impl CognitionClient {
     /// Connect to the Cognition Engine.
     pub async fn connect(settings: &CognitionEngineSettings) -> Result<Self, CognitionError> {
         let endpoint = tonic::transport::Endpoint::from_shared(settings.address.clone())
-            .map_err(|e| CognitionError::Connection(e.into()))?
+            .map_err(CognitionError::Connection)?
             .connect_timeout(Duration::from_secs(settings.connect_timeout_secs))
             .timeout(Duration::from_secs(settings.request_timeout_secs));
 
@@ -97,7 +92,12 @@ impl CognitionClient {
 
         self.with_retry(|mut client: CognitionServiceClient<Channel>| {
             let req = req.clone();
-            async move { client.complete(Request::new(req)).await.map(|r| r.into_inner()) }
+            async move {
+                client
+                    .complete(Request::new(req))
+                    .await
+                    .map(|r| r.into_inner())
+            }
         })
         .await
     }
@@ -143,7 +143,12 @@ impl CognitionClient {
         };
         self.with_retry(|mut client| {
             let req = req.clone();
-            async move { client.count_tokens(Request::new(req)).await.map(|r| r.into_inner()) }
+            async move {
+                client
+                    .count_tokens(Request::new(req))
+                    .await
+                    .map(|r| r.into_inner())
+            }
         })
         .await
     }
@@ -166,7 +171,12 @@ impl CognitionClient {
         };
         self.with_retry(|mut client| {
             let req = req.clone();
-            async move { client.parse_output(Request::new(req)).await.map(|r| r.into_inner()) }
+            async move {
+                client
+                    .parse_output(Request::new(req))
+                    .await
+                    .map(|r| r.into_inner())
+            }
         })
         .await
     }
@@ -175,7 +185,9 @@ impl CognitionClient {
     pub async fn health_check(&self) -> Result<(), CognitionError> {
         let mut client = HealthClient::new(self.channel.clone());
         client
-            .check(HealthCheckRequest { service: String::new() })
+            .check(HealthCheckRequest {
+                service: String::new(),
+            })
             .await
             .map(|_| ())
             .map_err(CognitionError::from)

@@ -6,15 +6,15 @@
 //!   - Memory / Qdrant (TCP)
 //!   - Messaging Adapters (WebSocket / Webhook, via Axum)
 
-pub mod config;
-pub mod errors;
 pub mod access_control;
-pub mod cognition_client;
-pub mod session;
-pub mod tool_registry;
-pub mod memory;
 pub mod agent_loop;
 pub mod api;
+pub mod cognition_client;
+pub mod config;
+pub mod errors;
 pub mod health;
 pub mod heartbeat;
+pub mod memory;
+pub mod session;
 pub mod telemetry;
+pub mod tool_registry;

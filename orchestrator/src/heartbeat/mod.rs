@@ -99,10 +99,14 @@ async fn run(
         // --- Update gRPC health reporter ---
         match overall {
             SubsystemStatus::Ok | SubsystemStatus::Degraded => {
-                reporter.set_serving::<tonic_health::pb::health_server::HealthServer<()>>().await;
+                reporter
+                    .set_serving::<tonic_health::pb::health_server::HealthServer<()>>()
+                    .await;
             }
             SubsystemStatus::Down => {
-                reporter.set_not_serving::<tonic_health::pb::health_server::HealthServer<()>>().await;
+                reporter
+                    .set_not_serving::<tonic_health::pb::health_server::HealthServer<()>>()
+                    .await;
             }
         }
 

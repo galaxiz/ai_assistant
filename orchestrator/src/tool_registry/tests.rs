@@ -4,6 +4,7 @@
 //! using wasmtime's built-in `wat` feature, so no external toolchain needed.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use std::path::PathBuf;
 
@@ -15,8 +16,7 @@ mod tests {
         errors::ToolError,
         tool_registry::{
             definition::{ToolBackend, ToolDefinition, ToolPermissions},
-            executor,
-            native_executor,
+            executor, native_executor,
         },
     };
 
@@ -89,6 +89,7 @@ mod tests {
             description: String::new(),
             default: None,
             positional: false,
+            is_stdin: false,
         }]);
         let err = def.validate_args("{}").unwrap_err();
         assert!(
@@ -106,6 +107,7 @@ mod tests {
             description: String::new(),
             default: None,
             positional: false,
+            is_stdin: false,
         }]);
         // Passing a string where integer is expected.
         let err = def.validate_args(r#"{"count": "hello"}"#).unwrap_err();
@@ -124,6 +126,7 @@ mod tests {
             description: String::new(),
             default: Some(json!(4096)),
             positional: false,
+            is_stdin: false,
         }]);
         let result = def.validate_args("{}").unwrap();
         assert_eq!(result["max_bytes"], json!(4096));
@@ -139,6 +142,7 @@ mod tests {
                 description: String::new(),
                 default: None,
                 positional: false,
+                is_stdin: false,
             },
             ArgDef {
                 name: "verbose".into(),
@@ -147,6 +151,7 @@ mod tests {
                 description: String::new(),
                 default: Some(json!(false)),
                 positional: false,
+                is_stdin: false,
             },
         ]);
         let result = def.validate_args(r#"{"path": "/tmp/foo"}"#).unwrap();
@@ -241,7 +246,7 @@ mod tests {
         // proc_exit(0) inside Wasm raises a Trap — we normalise exit-code-0 to Ok.
         let result = executor::run(&engine, &module, &def, "{}", 256, PathBuf::from(".")).await;
         match &result {
-            Ok(_) => {} // clean exit
+            Ok(_) => {}                       // clean exit
             Err(e) if is_wasi_exit_0(e) => {} // proc_exit(0) — treated as success
             other => panic!("noop tool unexpected result: {:?}", other),
         }
@@ -370,6 +375,7 @@ mod tests {
             description: String::new(),
             default: None,
             positional: true,
+            is_stdin: false,
         }
     }
 
@@ -442,8 +448,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_not_found() {
-        use std::sync::Arc;
         use crate::tool_registry::ToolRegistry;
+        use std::sync::Arc;
 
         // Create an empty registry.
         let registry = ToolRegistry::load(
@@ -460,7 +466,8 @@ mod tests {
         let err = registry.execute("does_not_exist", "{}").await;
         assert!(
             matches!(err, Err(ToolError::NotFound(_))),
-            "Expected NotFound, got {:?}", err
+            "Expected NotFound, got {:?}",
+            err
         );
     }
 }

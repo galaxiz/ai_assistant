@@ -68,10 +68,22 @@ async fn test_store_and_get_conversation() {
     let session_id = format!("inttest_{}", uuid::Uuid::new_v4());
 
     let messages = vec![
-        Message { role: "user".to_string(), content: "Hello, how are you?".to_string() },
-        Message { role: "assistant".to_string(), content: "I'm doing well, thanks!".to_string() },
-        Message { role: "user".to_string(), content: "What is the capital of France?".to_string() },
-        Message { role: "assistant".to_string(), content: "The capital of France is Paris.".to_string() },
+        Message {
+            role: "user".to_string(),
+            content: "Hello, how are you?".to_string(),
+        },
+        Message {
+            role: "assistant".to_string(),
+            content: "I'm doing well, thanks!".to_string(),
+        },
+        Message {
+            role: "user".to_string(),
+            content: "What is the capital of France?".to_string(),
+        },
+        Message {
+            role: "assistant".to_string(),
+            content: "The capital of France is Paris.".to_string(),
+        },
     ];
 
     store
@@ -104,13 +116,25 @@ async fn test_store_conversation_is_idempotent() {
     let session_id = format!("inttest_{}", uuid::Uuid::new_v4());
 
     let messages = vec![
-        Message { role: "user".to_string(), content: "First message".to_string() },
-        Message { role: "assistant".to_string(), content: "First reply".to_string() },
+        Message {
+            role: "user".to_string(),
+            content: "First message".to_string(),
+        },
+        Message {
+            role: "assistant".to_string(),
+            content: "First reply".to_string(),
+        },
     ];
 
     // Call twice — second call should upsert, not duplicate.
-    store.store_conversation(&session_id, &messages).await.expect("first store");
-    store.store_conversation(&session_id, &messages).await.expect("second store");
+    store
+        .store_conversation(&session_id, &messages)
+        .await
+        .expect("first store");
+    store
+        .store_conversation(&session_id, &messages)
+        .await
+        .expect("second store");
 
     let retrieved = store.get_conversation(&session_id).await.expect("get");
     assert_eq!(retrieved.len(), 2, "upsert should not create duplicates");

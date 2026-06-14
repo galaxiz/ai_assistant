@@ -37,7 +37,10 @@ pub enum CognitionError {
     Connection(#[from] tonic::transport::Error),
 
     #[error("RPC failed ({status}): {message}")]
-    Rpc { status: tonic::Code, message: String },
+    Rpc {
+        status: tonic::Code,
+        message: String,
+    },
 
     #[error("Timeout")]
     Timeout,

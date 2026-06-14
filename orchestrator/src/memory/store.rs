@@ -5,23 +5,18 @@
 //!   - `"conversation"` — ordered conversation turns (deterministic IDs `conv_N`).
 //!   - `"memory"` — arbitrary agent memories embedded on demand.
 
-use tracing::instrument;
 use qdrant_client::{
-    Qdrant,
     qdrant::{
-        Condition, CreateCollectionBuilder, Distance, Filter, PointStruct,
-        ScrollPointsBuilder, SearchPointsBuilder, UpsertPointsBuilder,
-        VectorParamsBuilder,
+        Condition, CreateCollectionBuilder, Distance, Filter, PointStruct, ScrollPointsBuilder,
+        SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
     },
+    Qdrant,
 };
+use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{
-    cognition_client::proto::Message,
-    config::QdrantSettings,
-    errors::MemoryError,
-};
 use super::embedding;
+use crate::{cognition_client::proto::Message, config::QdrantSettings, errors::MemoryError};
 
 /// Dimension of BGE-small-en-v1.5 embeddings.
 const VECTOR_DIM: u64 = 384;
@@ -40,7 +35,9 @@ impl MemoryStore {
         if let Some(key) = &settings.api_key {
             builder = builder.api_key(key.clone());
         }
-        let client = builder.build().map_err(|e| MemoryError::Qdrant(e.to_string()))?;
+        let client = builder
+            .build()
+            .map_err(|e| MemoryError::Qdrant(e.to_string()))?;
         Ok(Self {
             client,
             collection_prefix: settings.collection_prefix.clone(),
@@ -48,7 +45,11 @@ impl MemoryStore {
     }
 
     fn collection_name(&self, session_id: &str) -> String {
-        format!("{}_{}", self.collection_prefix, session_id.replace('-', "_"))
+        format!(
+            "{}_{}",
+            self.collection_prefix,
+            session_id.replace('-', "_")
+        )
     }
 
     /// Ping Qdrant — used by the health check / heartbeat task.
@@ -184,14 +185,10 @@ impl MemoryStore {
     #[instrument(skip(self), fields(session_id))]
     ///
     /// Returns messages sorted by their original insertion order (`seq`).
-    pub async fn get_conversation(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<Message>, MemoryError> {
+    pub async fn get_conversation(&self, session_id: &str) -> Result<Vec<Message>, MemoryError> {
         self.ensure_collection(session_id).await?;
 
-        let filter =
-            Filter::must([Condition::matches("type", "conversation".to_string())]);
+        let filter = Filter::must([Condition::matches("type", "conversation".to_string())]);
 
         let response = self
             .client
@@ -208,8 +205,7 @@ impl MemoryStore {
             .result
             .into_iter()
             .filter_map(|p| {
-                let payload: serde_json::Value =
-                    serde_json::to_value(&p.payload).ok()?;
+                let payload: serde_json::Value = serde_json::to_value(&p.payload).ok()?;
                 let seq = payload["seq"].as_u64()?;
                 let role = payload["role"].as_str()?.to_string();
                 let content = payload["content"].as_str()?.to_string();

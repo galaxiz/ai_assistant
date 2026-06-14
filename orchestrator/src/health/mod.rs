@@ -50,7 +50,9 @@ impl HealthState {
 }
 
 impl Default for HealthState {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Start the gRPC `grpc.health.v1` server on `addr`.
@@ -75,9 +77,7 @@ pub fn start_grpc_health_server(
 }
 
 /// `GET /health` handler.
-pub async fn health_handler(
-    State(health): State<Arc<HealthState>>,
-) -> impl IntoResponse {
+pub async fn health_handler(State(health): State<Arc<HealthState>>) -> impl IntoResponse {
     let report = health.report().await;
     let code = if report.status == SubsystemStatus::Down {
         StatusCode::SERVICE_UNAVAILABLE

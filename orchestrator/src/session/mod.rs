@@ -5,11 +5,7 @@
 //!   - Each session is worked on by **one task at a time** (Mutex guarantee).
 //!   - Each session has its own conversation history and state.
 
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
@@ -122,6 +118,10 @@ impl SessionStore {
     /// Count of active sessions.
     pub async fn len(&self) -> usize {
         self.sessions.read().await.len()
+    }
+
+    pub async fn is_empty(&self) -> bool {
+        self.sessions.read().await.is_empty()
     }
 
     /// List all active session IDs.
