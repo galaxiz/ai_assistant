@@ -22,8 +22,10 @@ message RequestContext {
 
 // OpenAI-style chat message.
 message Message {
-  string role    = 1;   // "system" | "user" | "assistant"
+  string role    = 1; // "system" | "user" | "assistant"
   string content = 2;
+
+  string unused_field = 3;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,8 +74,8 @@ message CompleteResponse {
 
 // A single chunk in a StreamComplete response.
 message StreamChunk {
-  string content = 1;  // Incremental text delta.
-  bool   done    = 2;  // True on the final (empty) sentinel chunk.
+  string content = 1; // Incremental text delta.
+  bool   done    = 2; // True on the final (empty) sentinel chunk.
 }
 
 // ---------------------------------------------------------------------------
@@ -90,8 +92,8 @@ message CountTokensRequest {
 
 message CountTokensResponse {
   int32 token_count      = 1;
-  bool  fits_budget      = 2;  // True if count ≤ prompt_token_budget.
-  int32 remaining_tokens = 3;  // Budget − count (0 if over budget).
+  bool  fits_budget      = 2; // True if count ≤ prompt_token_budget.
+  int32 remaining_tokens = 3; // Budget − count (0 if over budget).
 }
 
 // ---------------------------------------------------------------------------
