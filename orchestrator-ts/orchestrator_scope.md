@@ -41,17 +41,18 @@ The Orchestrator is the **core daemon** of the AI Agent system. This is the **Ty
 > **Estimated effort**: Medium
 > **Dependencies**: P0
 
-- [ ] Define `Session` type:
+- [x] Define `Session` type:
   - `sessionId: string` (UUID)
   - `createdAt: number` (epoch ms)
   - `lastActive: number`
   - `conversationHistory: Message[]` (mirrors proto `Message`)
   - `state: SessionState` union (`'idle' | 'processing' | 'awaitingTool' | 'error'`)
-- [ ] Define `SessionStore` (in-memory session registry):
-  - `Map<string, Session>` with a per-session async lock (`async-mutex` or a small home-grown mutex)
+- [x] Define `SessionStore` (in-memory session registry):
+  - `Map<string, Session>` with a per-session async lock (`async-mutex`)
   - Methods: `create()`, `get()`, `remove()`, `listActive()`, `cleanupExpired()`
-- [ ] Ensure single-turn-at-a-time guarantee per session (per-session async mutex achieves this; Node's event loop gives no parallelism but interleaving must be guarded)
-- [ ] Unit tests for session lifecycle (vitest)
+  - `withSession()` helper acquires the per-session mutex and runs the callback with exclusive access
+- [x] Ensure single-turn-at-a-time guarantee per session (per-session `Mutex` from `async-mutex`; serialises concurrent `withSession` calls on the same session)
+- [x] Unit tests for session lifecycle (vitest, 20 tests covering create/get/remove/listActive/cleanupExpired/withSession)
 
 ---
 
