@@ -30,12 +30,18 @@ impl AccessPolicy {
         } else {
             Some(settings.allowed_models.iter().cloned().collect())
         };
-        Self { allowed_tools, allowed_models }
+        Self {
+            allowed_tools,
+            allowed_models,
+        }
     }
 
     /// An unrestricted policy — grants access to all tools and models.
     pub fn allow_all() -> Self {
-        Self { allowed_tools: None, allowed_models: None }
+        Self {
+            allowed_tools: None,
+            allowed_models: None,
+        }
     }
 
     /// Returns `true` if `tool_name` is permitted under this policy.

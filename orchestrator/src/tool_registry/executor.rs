@@ -14,10 +14,13 @@ use std::{path::PathBuf, time::Duration};
 
 use tracing::instrument;
 use wasmtime::{Engine, Linker, Module, Store};
-use wasmtime_wasi::{pipe::{MemoryInputPipe, MemoryOutputPipe}, WasiCtxBuilder};
+use wasmtime_wasi::{
+    pipe::{MemoryInputPipe, MemoryOutputPipe},
+    WasiCtxBuilder,
+};
 
-use crate::errors::ToolError;
 use super::definition::ToolDefinition;
+use crate::errors::ToolError;
 
 /// Run a compiled Wasm module with the given JSON arguments.
 ///
@@ -38,11 +41,23 @@ pub async fn run(
     let module = module.clone();
     let def = definition.clone();
 
-    let result = tokio::time::timeout(timeout, tokio::task::spawn_blocking(move || {
-        execute_sync(&engine, &module, &def, &args_owned, max_memory_pages, &sandbox_root)
-    }))
+    let result = tokio::time::timeout(
+        timeout,
+        tokio::task::spawn_blocking(move || {
+            execute_sync(
+                &engine,
+                &module,
+                &def,
+                &args_owned,
+                max_memory_pages,
+                &sandbox_root,
+            )
+        }),
+    )
     .await
-    .map_err(|_| ToolError::Timeout { secs: definition.timeout_secs })?
+    .map_err(|_| ToolError::Timeout {
+        secs: definition.timeout_secs,
+    })?
     .map_err(|e| ToolError::Execution(e.into()))??;
 
     Ok(result)
@@ -62,22 +77,31 @@ fn execute_sync(
     let stdout_pipe = MemoryOutputPipe::new(4 * 1024 * 1024);
     let stdin_pipe = MemoryInputPipe::new(args_json.as_bytes().to_vec());
     let mut builder = WasiCtxBuilder::new();
-    builder.stdin(stdin_pipe).stdout(stdout_pipe.clone()).inherit_stderr();
+    builder
+        .stdin(stdin_pipe)
+        .stdout(stdout_pipe.clone())
+        .inherit_stderr();
 
     if definition.permissions.fs_read && !definition.permissions.fs_write {
         // Read-only access to the configured sandbox directory.
-        builder.preopened_dir(
-            sandbox_root, ".",
-            wasmtime_wasi::DirPerms::READ,
-            wasmtime_wasi::FilePerms::READ,
-        ).map_err(|e| ToolError::Execution(e.into()))?;
+        builder
+            .preopened_dir(
+                sandbox_root,
+                ".",
+                wasmtime_wasi::DirPerms::READ,
+                wasmtime_wasi::FilePerms::READ,
+            )
+            .map_err(|e| ToolError::Execution(e.into()))?;
     } else if definition.permissions.fs_write {
         // Full read+write access to the configured sandbox directory.
-        builder.preopened_dir(
-            sandbox_root, ".",
-            wasmtime_wasi::DirPerms::all(),
-            wasmtime_wasi::FilePerms::all(),
-        ).map_err(|e| ToolError::Execution(e.into()))?;
+        builder
+            .preopened_dir(
+                sandbox_root,
+                ".",
+                wasmtime_wasi::DirPerms::all(),
+                wasmtime_wasi::FilePerms::all(),
+            )
+            .map_err(|e| ToolError::Execution(e.into()))?;
     }
     // network permission: WASI preview1 does not expose sockets by default;
     // leaving it unenforced here (the ABI simply won't resolve socket calls).
@@ -89,9 +113,16 @@ fn execute_sync(
         .memories(max_memory_pages as usize)
         .build();
 
-    let mut store2 = Store::new(engine, LimitedData { wasi: wasi_ctx, limits });
+    let mut store2 = Store::new(
+        engine,
+        LimitedData {
+            wasi: wasi_ctx,
+            limits,
+        },
+    );
     // Fuel: 1 unit ≈ 1 Wasm instruction. 500M allows ~seconds of CPU work.
-    store2.set_fuel(500_000_000)
+    store2
+        .set_fuel(500_000_000)
         .map_err(|e| ToolError::Execution(e.into()))?;
     store2.limiter(|data| &mut data.limits);
 
@@ -104,18 +135,26 @@ fn execute_sync(
         .map_err(|e| ToolError::Execution(e.into()))?;
 
     // Invoke the `run` export if it exists, otherwise fall back to `_start` (WASI command).
-    if let Some(run_fn) = instance.get_typed_func::<(i32, i32), i32>(&mut store2, "run").ok() {
+    if let Some(run_fn) = instance
+        .get_typed_func::<(i32, i32), i32>(&mut store2, "run")
+        .ok()
+    {
         // Write args into Wasm memory.
-        let memory = instance
-            .get_memory(&mut store2, "memory")
-            .ok_or_else(|| ToolError::Execution(anyhow::anyhow!("Wasm module has no `memory` export")))?;
+        let memory = instance.get_memory(&mut store2, "memory").ok_or_else(|| {
+            ToolError::Execution(anyhow::anyhow!("Wasm module has no `memory` export"))
+        })?;
 
         let args_bytes = args_json.as_bytes();
         let args_len = args_bytes.len() as i32;
 
         // Allocate in Wasm memory via `alloc` export if available, else use offset 0 (simple modules).
-        let args_ptr = if let Some(alloc) = instance.get_typed_func::<i32, i32>(&mut store2, "alloc").ok() {
-            alloc.call(&mut store2, args_len).map_err(|e| ToolError::Execution(e.into()))?
+        let args_ptr = if let Some(alloc) = instance
+            .get_typed_func::<i32, i32>(&mut store2, "alloc")
+            .ok()
+        {
+            alloc
+                .call(&mut store2, args_len)
+                .map_err(|e| ToolError::Execution(e.into()))?
         } else {
             0i32
         };
@@ -144,7 +183,10 @@ fn execute_sync(
     } else {
         // WASI command — run `_start` and capture whatever it wrote to stdout.
         // This supports standard CLI-style tools compiled to WASI.
-        if let Some(start) = instance.get_typed_func::<(), ()>(&mut store2, "_start").ok() {
+        if let Some(start) = instance
+            .get_typed_func::<(), ()>(&mut store2, "_start")
+            .ok()
+        {
             // proc_exit(0) manifests as an anyhow Trap; treat exit-code-0 as a clean exit.
             if let Err(e) = start.call(&mut store2, ()) {
                 let is_clean_exit = e.chain().any(|cause| {
@@ -161,8 +203,9 @@ fn execute_sync(
         if bytes.is_empty() {
             Ok("{}".to_string())
         } else {
-            String::from_utf8(bytes.to_vec())
-                .map_err(|e| ToolError::Execution(anyhow::anyhow!("tool stdout is not valid UTF-8: {e}")))
+            String::from_utf8(bytes.to_vec()).map_err(|e| {
+                ToolError::Execution(anyhow::anyhow!("tool stdout is not valid UTF-8: {e}"))
+            })
         }
     }
 }

@@ -35,7 +35,11 @@ pub struct ErrorResponse {
 
 impl ErrorResponse {
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self { error: message.into(), code: code.into(), session_id: None }
+        Self {
+            error: message.into(),
+            code: code.into(),
+            session_id: None,
+        }
     }
 
     pub fn with_session(mut self, session_id: impl Into<String>) -> Self {

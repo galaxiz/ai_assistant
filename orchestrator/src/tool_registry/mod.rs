@@ -58,8 +58,7 @@ impl ToolRegistry {
             cfg.consume_fuel(true);
             cfg
         };
-        let engine = Engine::new(&engine_config)
-            .map_err(|e| ToolError::Compile(e.into()))?;
+        let engine = Engine::new(&engine_config).map_err(|e| ToolError::Compile(e.into()))?;
         let mut entries = HashMap::new();
 
         if !dir.exists() {
@@ -89,7 +88,13 @@ impl ToolRegistry {
             match definition::parse_tool_md(&path).await {
                 Ok(def) => {
                     info!(tool = %def.name, backend = ?def.backend, "Registered tool");
-                    entries.insert(def.name.clone(), ToolEntry { definition: def, module: None });
+                    entries.insert(
+                        def.name.clone(),
+                        ToolEntry {
+                            definition: def,
+                            module: None,
+                        },
+                    );
                 }
                 Err(e) => {
                     warn!(file = %path.display(), error = %e, "Skipping invalid tool.md");
@@ -140,7 +145,9 @@ impl ToolRegistry {
         let validated_args = definition.validate_args(args_json)?;
 
         // Resolve sandbox root: per-tool override wins, else global default.
-        let sandbox_root = definition.permissions.sandbox_root
+        let sandbox_root = definition
+            .permissions
+            .sandbox_root
             .as_deref()
             .map(PathBuf::from)
             .unwrap_or_else(|| self.sandbox_root.clone());
@@ -167,11 +174,15 @@ impl ToolRegistry {
                         .ok_or_else(|| ToolError::NotFound(tool_name.to_string()))?;
 
                     if entry.module.is_none() {
-                        let wasm_path = definition.wasm.as_ref()
-                            .ok_or_else(|| ToolError::Compile(anyhow::anyhow!("tool `{tool_name}` has no wasm path")))?;
+                        let wasm_path = definition.wasm.as_ref().ok_or_else(|| {
+                            ToolError::Compile(anyhow::anyhow!(
+                                "tool `{tool_name}` has no wasm path"
+                            ))
+                        })?;
                         info!(tool = %tool_name, wasm = %wasm_path.display(), "Compiling Wasm module (first use)");
-                        let wasm_bytes =
-                            tokio::fs::read(wasm_path).await.map_err(|e| ToolError::Compile(e.into()))?;
+                        let wasm_bytes = tokio::fs::read(wasm_path)
+                            .await
+                            .map_err(|e| ToolError::Compile(e.into()))?;
                         let module = wasmtime::Module::new(&self.engine, &wasm_bytes)
                             .map_err(|e| ToolError::Compile(e.into()))?;
                         entry.module = Some(module);

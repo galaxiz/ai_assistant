@@ -18,9 +18,8 @@ impl SessionRateLimiter {
     /// Create a limiter allowing up to `requests_per_minute` per session.
     /// Pass `0` to disable rate limiting.
     pub fn new(requests_per_minute: u32) -> Self {
-        let inner = NonZeroU32::new(requests_per_minute).map(|rpm| {
-            RateLimiter::keyed(Quota::per_minute(rpm))
-        });
+        let inner = NonZeroU32::new(requests_per_minute)
+            .map(|rpm| RateLimiter::keyed(Quota::per_minute(rpm)));
         Self { inner }
     }
 

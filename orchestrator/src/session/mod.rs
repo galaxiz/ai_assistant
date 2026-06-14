@@ -5,11 +5,7 @@
 //!   - Each session is worked on by **one task at a time** (Mutex guarantee).
 //!   - Each session has its own conversation history and state.
 
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;

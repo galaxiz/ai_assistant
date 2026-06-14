@@ -8,11 +8,7 @@ use opentelemetry::{
     metrics::{Counter, Histogram},
     KeyValue,
 };
-use opentelemetry_sdk::{
-    metrics::PeriodicReader,
-    runtime::Tokio,
-    trace::Sampler,
-};
+use opentelemetry_sdk::{metrics::PeriodicReader, runtime::Tokio, trace::Sampler};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 use crate::config::Settings;
@@ -70,15 +66,24 @@ pub fn metrics() -> Metrics {
 
 pub fn init(settings: &Settings) -> anyhow::Result<()> {
     let t = &settings.telemetry;
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&t.log_level));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&t.log_level));
 
     let local_time = fmt::time::ChronoLocal::new("%Y-%m-%dT%H:%M:%S%.3f%:z".to_string());
 
     let fmt_layer: Box<dyn Layer<_> + Send + Sync> = if t.log_format == "json" {
-        Box::new(fmt::layer().json().with_timer(local_time).with_filter(filter))
+        Box::new(
+            fmt::layer()
+                .json()
+                .with_timer(local_time)
+                .with_filter(filter),
+        )
     } else {
-        Box::new(fmt::layer().pretty().with_timer(local_time).with_filter(EnvFilter::new(&t.log_level)))
+        Box::new(
+            fmt::layer()
+                .pretty()
+                .with_timer(local_time)
+                .with_filter(EnvFilter::new(&t.log_level)),
+        )
     };
 
     let registry = tracing_subscriber::registry().with(fmt_layer);
@@ -87,9 +92,10 @@ pub fn init(settings: &Settings) -> anyhow::Result<()> {
         use opentelemetry::trace::TracerProvider as _;
         use opentelemetry_otlp::WithExportConfig;
 
-        let resource = opentelemetry_sdk::Resource::new(vec![
-            KeyValue::new("service.name", t.service_name.clone()),
-        ]);
+        let resource = opentelemetry_sdk::Resource::new(vec![KeyValue::new(
+            "service.name",
+            t.service_name.clone(),
+        )]);
 
         // --- Traces ---
         let sampler = if t.sampling_rate >= 1.0 {

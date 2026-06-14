@@ -15,8 +15,7 @@ mod tests {
         errors::ToolError,
         tool_registry::{
             definition::{ToolBackend, ToolDefinition, ToolPermissions},
-            executor,
-            native_executor,
+            executor, native_executor,
         },
     };
 
@@ -241,7 +240,7 @@ mod tests {
         // proc_exit(0) inside Wasm raises a Trap — we normalise exit-code-0 to Ok.
         let result = executor::run(&engine, &module, &def, "{}", 256, PathBuf::from(".")).await;
         match &result {
-            Ok(_) => {} // clean exit
+            Ok(_) => {}                       // clean exit
             Err(e) if is_wasi_exit_0(e) => {} // proc_exit(0) — treated as success
             other => panic!("noop tool unexpected result: {:?}", other),
         }
@@ -442,8 +441,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_not_found() {
-        use std::sync::Arc;
         use crate::tool_registry::ToolRegistry;
+        use std::sync::Arc;
 
         // Create an empty registry.
         let registry = ToolRegistry::load(
@@ -460,7 +459,8 @@ mod tests {
         let err = registry.execute("does_not_exist", "{}").await;
         assert!(
             matches!(err, Err(ToolError::NotFound(_))),
-            "Expected NotFound, got {:?}", err
+            "Expected NotFound, got {:?}",
+            err
         );
     }
 }

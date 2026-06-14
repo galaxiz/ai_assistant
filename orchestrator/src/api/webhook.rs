@@ -2,10 +2,19 @@
 
 use std::sync::Arc;
 
-use axum::{extract::{Extension, State}, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{Extension, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use opentelemetry::KeyValue;
 use std::time::Instant;
 
+use super::{
+    rate_limit::SessionRateLimiter,
+    types::{AgentResponse, ErrorResponse, UserMessage},
+};
 use crate::{
     access_control::{AccessPolicy, ValidatedUser},
     agent_loop,
@@ -15,10 +24,6 @@ use crate::{
     session::SessionStore,
     telemetry,
     tool_registry::ToolRegistry,
-};
-use super::{
-    rate_limit::SessionRateLimiter,
-    types::{AgentResponse, ErrorResponse, UserMessage},
 };
 
 #[derive(Clone)]
@@ -40,14 +45,13 @@ pub async fn webhook_handler(
 ) -> impl IntoResponse {
     let start = Instant::now();
     let m = telemetry::metrics();
-    m.requests_total.add(1, &[KeyValue::new("endpoint", "webhook")]);
+    m.requests_total
+        .add(1, &[KeyValue::new("endpoint", "webhook")]);
 
-    let user = user
-        .map(|Extension(u)| u)
-        .unwrap_or_else(|| ValidatedUser {
-            token: String::new(),
-            policy: AccessPolicy::allow_all(),
-        });
+    let user = user.map(|Extension(u)| u).unwrap_or_else(|| ValidatedUser {
+        token: String::new(),
+        policy: AccessPolicy::allow_all(),
+    });
 
     // Resolve or create session.
     let session_id = match &payload.session_id {
@@ -71,7 +75,10 @@ pub async fn webhook_handler(
         None => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!(ErrorResponse::new("session_error", "Could not create session"))),
+                Json(serde_json::json!(ErrorResponse::new(
+                    "session_error",
+                    "Could not create session"
+                ))),
             );
         }
     };
@@ -92,7 +99,8 @@ pub async fn webhook_handler(
     };
 
     let elapsed = start.elapsed().as_millis() as f64;
-    m.request_duration_ms.record(elapsed, &[KeyValue::new("endpoint", "webhook")]);
+    m.request_duration_ms
+        .record(elapsed, &[KeyValue::new("endpoint", "webhook")]);
 
     match result {
         Ok(agent_loop::AgentResponse::Message(content)) => (
@@ -107,7 +115,10 @@ pub async fn webhook_handler(
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!(ErrorResponse::new("agent_error", e.to_string()))),
+            Json(serde_json::json!(ErrorResponse::new(
+                "agent_error",
+                e.to_string()
+            ))),
         ),
     }
 }

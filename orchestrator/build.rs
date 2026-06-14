@@ -9,10 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .build_client(true)
         .build_server(false) // Orchestrator is a client of the Cognition Engine
-        .compile_protos(
-            &["../proto/cognition.proto"],
-            &["../proto"],
-        )?;
+        .compile_protos(&["../proto/cognition.proto"], &["../proto"])?;
 
     println!("cargo:rerun-if-changed=../proto/cognition.proto");
 

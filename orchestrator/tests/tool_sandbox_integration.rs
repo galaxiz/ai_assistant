@@ -19,10 +19,16 @@ fn tools_dir() -> PathBuf {
 }
 
 async fn load_registry(sandbox_root: PathBuf) -> Arc<ToolRegistry> {
-    ToolRegistry::load(&tools_dir(), 256, sandbox_root, std::collections::HashSet::new(), 65536)
-        .await
-        .map(Arc::new)
-        .expect("failed to load tool registry from tools/")
+    ToolRegistry::load(
+        &tools_dir(),
+        256,
+        sandbox_root,
+        std::collections::HashSet::new(),
+        65536,
+    )
+    .await
+    .map(Arc::new)
+    .expect("failed to load tool registry from tools/")
 }
 
 async fn load_registry_with_binaries(
@@ -84,10 +90,13 @@ async fn test_read_file_returns_content() {
     let registry = load_registry(sandbox.path().to_path_buf()).await;
 
     let args = r#"{"path": "hello.txt"}"#;
-    let result = registry.execute("read_file", args).await.expect("execute read_file");
+    let result = registry
+        .execute("read_file", args)
+        .await
+        .expect("execute read_file");
 
-    let json: serde_json::Value = serde_json::from_str(&result)
-        .unwrap_or_else(|_| panic!("output is not JSON: {result}"));
+    let json: serde_json::Value =
+        serde_json::from_str(&result).unwrap_or_else(|_| panic!("output is not JSON: {result}"));
     assert_eq!(
         json["content"].as_str().expect("content field"),
         "hello from sandbox"
@@ -105,8 +114,8 @@ async fn test_read_file_respects_max_bytes() {
     let args = r#"{"path": "data.txt", "max_bytes": 3}"#;
     let result = registry.execute("read_file", args).await.expect("execute");
 
-    let json: serde_json::Value = serde_json::from_str(&result)
-        .unwrap_or_else(|_| panic!("output is not JSON: {result}"));
+    let json: serde_json::Value =
+        serde_json::from_str(&result).unwrap_or_else(|_| panic!("output is not JSON: {result}"));
     assert_eq!(json["content"].as_str().expect("content"), "abc");
 }
 
@@ -175,8 +184,8 @@ async fn test_read_file_path_outside_sandbox() {
         .await
         .expect("tool should run and return error JSON, not a ToolError");
 
-    let json: serde_json::Value = serde_json::from_str(&result)
-        .unwrap_or_else(|_| panic!("output is not JSON: {result}"));
+    let json: serde_json::Value =
+        serde_json::from_str(&result).unwrap_or_else(|_| panic!("output is not JSON: {result}"));
     assert!(
         json.get("error").is_some(),
         "expected {{\"error\": ...}} for missing file, got: {result}"
@@ -198,8 +207,8 @@ async fn test_read_file_absolute_path_denied_by_wasi() {
         .await
         .expect("tool should run and return error JSON, not a ToolError");
 
-    let json: serde_json::Value = serde_json::from_str(&result)
-        .unwrap_or_else(|_| panic!("output is not JSON: {result}"));
+    let json: serde_json::Value =
+        serde_json::from_str(&result).unwrap_or_else(|_| panic!("output is not JSON: {result}"));
     assert!(
         json.get("error").is_some(),
         "WASI should have blocked access to /etc/hosts, got: {result}"
@@ -234,8 +243,8 @@ async fn test_git_diff_captures_diff() {
         .await
         .expect("git_diff should succeed");
 
-    let v: serde_json::Value = serde_json::from_str(&result)
-        .unwrap_or_else(|_| panic!("output is not JSON: {result}"));
+    let v: serde_json::Value =
+        serde_json::from_str(&result).unwrap_or_else(|_| panic!("output is not JSON: {result}"));
     let stdout = v["stdout"].as_str().unwrap();
     assert!(
         stdout.contains("diff") && stdout.contains("modified"),

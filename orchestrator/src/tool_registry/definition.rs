@@ -108,7 +108,9 @@ pub struct ToolDefinition {
     pub docs: String,
 }
 
-fn default_timeout() -> u64 { 10 }
+fn default_timeout() -> u64 {
+    10
+}
 
 impl ToolDefinition {
     /// Validate and normalise `args_json` against this tool's argument definitions.
@@ -119,23 +121,22 @@ impl ToolDefinition {
     ///
     /// Returns the normalised args object (with defaults applied) on success.
     pub fn validate_args(&self, args_json: &str) -> Result<Value, ToolError> {
-        let mut args: Value = serde_json::from_str(args_json).map_err(|e| {
-            ToolError::InvalidArgs(format!("args is not valid JSON: {e}"))
-        })?;
+        let mut args: Value = serde_json::from_str(args_json)
+            .map_err(|e| ToolError::InvalidArgs(format!("args is not valid JSON: {e}")))?;
 
-        let obj = args.as_object_mut().ok_or_else(|| {
-            ToolError::InvalidArgs("args must be a JSON object".to_string())
-        })?;
+        let obj = args
+            .as_object_mut()
+            .ok_or_else(|| ToolError::InvalidArgs("args must be a JSON object".to_string()))?;
 
         for arg in &self.args {
             match obj.get(&arg.name) {
                 Some(v) => {
                     // Type-check the supplied value.
                     let type_ok = match arg.ty.as_str() {
-                        "string"  => v.is_string(),
+                        "string" => v.is_string(),
                         "integer" => v.is_number() && v.as_i64().is_some(),
                         "boolean" => v.is_boolean(),
-                        "object"  => v.is_object(),
+                        "object" => v.is_object(),
                         // Unknown types are passed through without checking.
                         _ => true,
                     };
@@ -169,11 +170,11 @@ impl ToolDefinition {
 
 fn value_type_name(v: &Value) -> &'static str {
     match v {
-        Value::Null    => "null",
+        Value::Null => "null",
         Value::Bool(_) => "boolean",
         Value::Number(_) => "number",
         Value::String(_) => "string",
-        Value::Array(_)  => "array",
+        Value::Array(_) => "array",
         Value::Object(_) => "object",
     }
 }
@@ -192,10 +193,11 @@ pub async fn parse_tool_md(path: &Path) -> Result<ToolDefinition, ToolError> {
         source: anyhow::anyhow!("Missing or malformed `---` frontmatter delimiters"),
     })?;
 
-    let mut def: ToolDefinition = toml::from_str(frontmatter).map_err(|e| ToolError::ParseError {
-        file: path.display().to_string(),
-        source: e.into(),
-    })?;
+    let mut def: ToolDefinition =
+        toml::from_str(frontmatter).map_err(|e| ToolError::ParseError {
+            file: path.display().to_string(),
+            source: e.into(),
+        })?;
 
     // Validate backend/wasm/binary consistency.
     match def.backend {

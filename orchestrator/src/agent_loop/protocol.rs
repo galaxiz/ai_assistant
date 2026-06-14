@@ -16,9 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Regex to extract a ```tool_call ... ``` block from LLM output.
-static TOOL_CALL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"```tool_call\s*\n([\s\S]*?)\n```").expect("invalid tool_call regex")
-});
+static TOOL_CALL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"```tool_call\s*\n([\s\S]*?)\n```").expect("invalid tool_call regex"));
 
 /// A parsed tool invocation from the LLM.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +49,10 @@ pub fn format_tool_result(call_id: &str, status: &str, output: &str) -> String {
         "status": status,
         "output": output,
     });
-    format!("```tool_result\n{}\n```", serde_json::to_string_pretty(&payload).unwrap())
+    format!(
+        "```tool_result\n{}\n```",
+        serde_json::to_string_pretty(&payload).unwrap()
+    )
 }
 
 #[cfg(test)]

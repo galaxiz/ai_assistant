@@ -15,6 +15,10 @@ use tracing::info;
 use opentelemetry::KeyValue;
 use std::time::Instant;
 
+use super::{
+    rate_limit::SessionRateLimiter,
+    types::{AgentResponse, ErrorResponse, UserMessage},
+};
 use crate::{
     access_control::{AccessPolicy, ValidatedUser},
     agent_loop,
@@ -24,10 +28,6 @@ use crate::{
     session::SessionStore,
     telemetry,
     tool_registry::ToolRegistry,
-};
-use super::{
-    rate_limit::SessionRateLimiter,
-    types::{AgentResponse, ErrorResponse, UserMessage},
 };
 
 #[derive(Clone)]
@@ -48,12 +48,10 @@ pub async fn ws_handler(
     // If auth is disabled the middleware inserts an allow-all user.
     user: Option<Extension<ValidatedUser>>,
 ) -> Response {
-    let user = user
-        .map(|Extension(u)| u)
-        .unwrap_or_else(|| ValidatedUser {
-            token: String::new(),
-            policy: AccessPolicy::allow_all(),
-        });
+    let user = user.map(|Extension(u)| u).unwrap_or_else(|| ValidatedUser {
+        token: String::new(),
+        policy: AccessPolicy::allow_all(),
+    });
     ws.on_upgrade(|socket| handle_socket(socket, state, user))
 }
 
@@ -162,8 +160,7 @@ async fn handle_socket(socket: WebSocket, state: WsState, user: ValidatedUser) {
                 .unwrap_or_default()
             }
             Err(e) => serde_json::to_string(
-                &ErrorResponse::new("agent_error", e.to_string())
-                    .with_session(session_id.clone()),
+                &ErrorResponse::new("agent_error", e.to_string()).with_session(session_id.clone()),
             )
             .unwrap_or_default(),
         };

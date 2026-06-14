@@ -3,8 +3,6 @@
 //! Layout mirrors `CE_` prefix convention used by the Cognition Engine.
 //! All Orchestrator vars use the `ORCH_` prefix.
 
-
-
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Deserialise a `Vec<String>` from either a TOML/JSON sequence **or** a

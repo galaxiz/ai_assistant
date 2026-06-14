@@ -41,7 +41,8 @@ async fn main() -> anyhow::Result<()> {
             settings.tools.sandbox_root.clone(),
             settings.tools.allowed_binaries.iter().cloned().collect(),
             settings.tools.max_output_bytes,
-        ).await?,
+        )
+        .await?,
     );
     let health = Arc::new(HealthState::new());
 
@@ -105,7 +106,11 @@ async fn init_memory(settings: &Settings) -> Option<Arc<MemoryStore>> {
 
 async fn shutdown_signal() {
     use tokio::signal;
-    let ctrl_c = async { signal::ctrl_c().await.expect("failed to install Ctrl+C handler") };
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler")
+    };
     #[cfg(unix)]
     let terminate = async {
         signal::unix::signal(signal::unix::SignalKind::terminate())

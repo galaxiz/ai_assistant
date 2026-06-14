@@ -8,18 +8,13 @@
 //!   - No shell — `Command::new(binary)` directly, preventing injection
 //!   - Optional stdin piping for tools that mark an arg with `is_stdin = true`
 
-use std::{
-    collections::HashSet,
-    path::Path,
-    process::Stdio,
-    time::Duration,
-};
+use std::{collections::HashSet, path::Path, process::Stdio, time::Duration};
 
 use serde_json::Value;
 use tracing::instrument;
 
-use crate::errors::ToolError;
 use super::definition::ToolDefinition;
+use crate::errors::ToolError;
 
 const TRUNCATION_SUFFIX: &str = "\n[truncated]";
 
@@ -45,10 +40,9 @@ pub async fn run(
     sandbox_root: &Path,
     max_output_bytes: usize,
 ) -> Result<String, ToolError> {
-    let binary = definition
-        .binary
-        .as_deref()
-        .ok_or_else(|| ToolError::Execution(anyhow::anyhow!("native tool has no `binary` field")))?;
+    let binary = definition.binary.as_deref().ok_or_else(|| {
+        ToolError::Execution(anyhow::anyhow!("native tool has no `binary` field"))
+    })?;
 
     if !allowed_binaries.contains(binary) {
         return Err(ToolError::PermissionDenied(format!(
@@ -59,7 +53,9 @@ pub async fn run(
     let argv = build_argv(definition, args);
 
     // Extract the stdin arg value, if any arg is marked `is_stdin = true`.
-    let stdin_content = definition.args.iter()
+    let stdin_content = definition
+        .args
+        .iter()
         .find(|a| a.is_stdin)
         .and_then(|a| args.get(&a.name))
         .and_then(|v| v.as_str())
@@ -88,11 +84,11 @@ async fn spawn(
     max_output_bytes: usize,
 ) -> Result<String, ToolError> {
     // Collect env vars we want to forward before clearing.
-    let path  = std::env::var("PATH").unwrap_or_default();
-    let home  = std::env::var("HOME").unwrap_or_default();
-    let lang  = std::env::var("LANG").unwrap_or_default();
-    let term  = std::env::var("TERM").unwrap_or_default();
-    let tz    = std::env::var("TZ").unwrap_or_default();
+    let path = std::env::var("PATH").unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_default();
+    let lang = std::env::var("LANG").unwrap_or_default();
+    let term = std::env::var("TERM").unwrap_or_default();
+    let tz = std::env::var("TZ").unwrap_or_default();
 
     let mut child = tokio::process::Command::new(&binary)
         .args(&argv)
@@ -103,7 +99,11 @@ async fn spawn(
         .env("LANG", &lang)
         .env("TERM", &term)
         .env("TZ", &tz)
-        .stdin(if stdin_content.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdin(if stdin_content.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -239,10 +239,7 @@ mod tests {
 
     #[test]
     fn test_build_argv_positional() {
-        let def = make_def(vec![
-            arg("path", true),
-            arg("output", true),
-        ]);
+        let def = make_def(vec![arg("path", true), arg("output", true)]);
         let args = serde_json::json!({"path": "/tmp/x", "output": "/tmp/y"});
         let argv = build_argv(&def, &args);
         assert_eq!(argv, vec!["/tmp/x", "/tmp/y"]);
@@ -251,10 +248,22 @@ mod tests {
     #[test]
     fn test_build_argv_boolean_flags() {
         let def = make_def(vec![
-            ArgDef { name: "verbose".into(), ty: "boolean".into(), required: false,
-                     description: String::new(), default: None, positional: false },
-            ArgDef { name: "quiet".into(), ty: "boolean".into(), required: false,
-                     description: String::new(), default: None, positional: false },
+            ArgDef {
+                name: "verbose".into(),
+                ty: "boolean".into(),
+                required: false,
+                description: String::new(),
+                default: None,
+                positional: false,
+            },
+            ArgDef {
+                name: "quiet".into(),
+                ty: "boolean".into(),
+                required: false,
+                description: String::new(),
+                default: None,
+                positional: false,
+            },
         ]);
         let args = serde_json::json!({"verbose": true, "quiet": false});
         let argv = build_argv(&def, &args);

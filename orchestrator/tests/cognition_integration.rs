@@ -13,7 +13,9 @@ async fn test_count_tokens_integration() {
         max_retries: 3,
     };
 
-    let client = CognitionClient::connect(&settings).await.expect("Failed to connect");
+    let client = CognitionClient::connect(&settings)
+        .await
+        .expect("Failed to connect");
 
     // Send a message to count
     let messages = vec![Message {
