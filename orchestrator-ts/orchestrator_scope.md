@@ -60,17 +60,18 @@ The Orchestrator is the **core daemon** of the AI Agent system. This is the **Ty
 > **Estimated effort**: Medium
 > **Dependencies**: P0
 
-- [ ] Generate TS client from `proto/cognition.proto` (`ts-proto` / `nice-grpc`)
-- [ ] Create `CognitionClient` wrapper class with:
-  - Connection management (channel creation, reconnect, keepalive)
-  - `complete()` → calls `Complete` RPC
-  - `streamComplete()` → calls `StreamComplete` RPC (returns async iterable)
-  - `countTokens()` → calls `CountTokens` RPC
-  - `parseOutput()` → calls `ParseOutput` RPC
-- [ ] Populate `RequestContext` (session_id, auth_token) on every call (gRPC metadata)
-- [ ] Add retry logic with exponential backoff for transient gRPC failures
-- [ ] Config: Cognition Engine address, timeouts, retry params (env vars, prefix `ORCH_`)
-- [ ] Integration test: connect to running Cognition Engine, call `CountTokens`
+- [x] Hand-written TypeScript types in `src/cognition/types.ts` mirroring `proto/cognition.proto` (replaced by `npm run proto:gen` output when `protoc` is available)
+- [x] Create `CognitionClient` wrapper class (`src/cognition/client.ts`) with:
+  - Connection management via `@grpc/grpc-js` channel with keepalive options; auto-reconnects
+  - `complete()` → calls `Complete` RPC (unary, with retry)
+  - `streamComplete()` → calls `StreamComplete` RPC (returns `AsyncIterable<StreamChunk>`)
+  - `countTokens()` → calls `CountTokens` RPC (unary, with retry)
+  - `parseOutput()` → calls `ParseOutput` RPC (unary, with retry)
+  - Stub is injectable for unit testing; `CognitionClient.fromConfig()` creates production instance
+- [x] `RequestContext` (session_id, auth_token) embedded in every request message (matches proto schema)
+- [x] Retry with exponential backoff + ±10% jitter for `UNAVAILABLE`, `DEADLINE_EXCEEDED`, `RESOURCE_EXHAUSTED` (`src/cognition/retry.ts`)
+- [x] Config via `loadConfig()` reading `ORCH_COGNITION_*` env vars (`src/cognition/config.ts`)
+- [x] 21 unit tests; 2 integration tests auto-skipped unless `ORCH_COGNITION_ENGINE_ADDRESS` is set
 
 ---
 
