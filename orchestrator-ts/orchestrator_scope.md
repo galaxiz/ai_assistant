@@ -24,16 +24,16 @@ The Orchestrator is the **core daemon** of the AI Agent system. This is the **Ty
 > **Estimated effort**: Small
 > **Dependencies**: None
 
-- [ ] Initialize Node project (`npm init`) in `/orchestrator-ts`, ESM (`"type": "module"`)
-- [ ] Set up `package.json` + `tsconfig.json` (strict, `NodeNext` module resolution) with initial dependencies:
-  - `@grpc/grpc-js` + `@grpc/proto-loader` (or `nice-grpc` + `ts-proto`) — gRPC client/server + protobuf codegen
-  - `fastify` (or `express`) + `ws` — HTTP/WebSocket server
+- [x] Initialize Node project (`npm init`) in `/orchestrator-ts`, ESM (`"type": "module"`)
+- [x] Set up `package.json` + `tsconfig.json` (strict, `NodeNext` module resolution) with initial dependencies:
+  - `@grpc/grpc-js` + `@grpc/proto-loader` + `ts-proto` — gRPC client/server + protobuf codegen
+  - `fastify` + `@fastify/websocket` — HTTP/WebSocket server
   - `zod` (runtime validation / structured parsing)
   - `uuid` (session IDs)
   - `pino` (structured logging)
-- [ ] Dev tooling: `tsx` (dev runner), `vitest` (tests), `eslint` + `@typescript-eslint`, `prettier`, `tsup`/`tsc` (build)
-- [ ] Codegen step for `proto/cognition.proto` (`ts-proto` via `protoc`, or runtime `proto-loader`)
-- [ ] Verify bare project type-checks, builds, and proto codegen works
+- [x] Dev tooling: `tsx` (dev runner), `vitest` (tests), `typescript-eslint`, `prettier`, `tsup`/`tsc` (build)
+- [x] Codegen script at `scripts/gen-proto.sh` (runs `protoc` + `ts-proto` plugin; requires `protoc` installed)
+- [x] Verify bare project type-checks (`tsc --noEmit` passes)
 
 ---
 
