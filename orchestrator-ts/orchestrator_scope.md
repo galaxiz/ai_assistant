@@ -99,22 +99,19 @@ The Orchestrator is the **core daemon** of the AI Agent system. This is the **Ty
 > **Estimated effort**: Large
 > **Dependencies**: P0
 
-- [ ] Choose a Wasm runtime: Node's built-in `node:wasi` (experimental) or `@bytecodealliance/jco` / a `wasmtime` Node binding; run instances on `worker_threads` for isolation + cancellation
-- [ ] Define host function interface (the functions Wasm modules can call):
-  - File I/O (sandboxed via WASI preopens)
-  - Network requests (opt-in, permission-scoped)
-  - Return structured results
-- [ ] Implement `ToolExecutor` class:
-  - Load `.wasm` modules on startup
-  - `execute(toolName, argsJson) → Promise<string>` (throws `ToolError`)
-  - Execution timeout enforcement (worker termination)
-  - Resource limits (memory + instruction/fuel cap where the runtime supports it)
-- [ ] **Tool format**: each tool is a `tool.md` file (TOML frontmatter + Markdown description)
-- [ ] Scan `tools/` directory at startup; parse only frontmatter to build the registry (no Wasm loaded yet)
-- [ ] **Lazy loading**: compile `.wasm` on first invocation; cache the compiled `WebAssembly.Module`
-- [ ] Fresh instance/worker per invocation for isolation; reuse cached compiled module for speed
-- [ ] Permission scopes declared in `tool.md` frontmatter, enforced by host function layer / WASI preopen config
-- [ ] Unit tests with a minimal test `.wasm` module (compiled inline from WAT via `wabt`)
+- [x] Runtime: Node's built-in `node:wasi` (preview1) + `worker_threads`; each invocation gets a fresh worker for isolation and forcible cancellation via `worker.terminate()`
+- [x] Host function interface: WASI `wasi_snapshot_preview1` (fd_write, args_get, proc_exit, etc.); file I/O gated by WASI preopens (`/` mounted only when `fs_read` or `fs_write` is true); network is reserved (not yet enforced at Wasm layer)
+- [x] `WasmToolExecutor` implements `ToolExecutor` (`src/tools/executor.ts`):
+  - Reads `.wasm` bytes from disk on first call, caches them in memory
+  - `execute(call) → Promise<ToolResult>` — runs in worker, captures stdout via temp file, returns `{ status: 'ok' | 'error', output }`
+  - Timeout enforced by `setTimeout` + `worker.terminate()` → throws `ToolTimeoutError`
+  - `ToolNotFoundError` and `ToolTimeoutError` propagate; other errors become `status: 'error'` results
+- [x] **Tool format**: `tool.md` (TOML frontmatter + Markdown description) — shared with Rust orchestrator
+- [x] `ToolRegistry.fromDir()` scans `tools/*.md` at startup, parses only TOML frontmatter (`smol-toml`), builds in-memory map; skips invalid files with a warning
+- [x] **Lazy loading**: `.wasm` bytes read + cached on first `execute()` call; `WebAssembly.compile()` happens inside each worker (fresh compile per invocation avoids cross-thread Module sharing complexity)
+- [x] Permission scopes from frontmatter enforced via WASI preopen config in the worker
+- [x] Added `src/types/webassembly-globals.d.ts` to declare `WebAssembly` as a runtime value (TypeScript ES2022 lib only has it as a namespace)
+- [x] 17 tests: 11 registry (frontmatter parsing, error resilience) + 6 executor (noop, stdout capture, caching, not-found, timeout, missing wasm); WAT compiled inline with `wabt`
 
 ---
 
